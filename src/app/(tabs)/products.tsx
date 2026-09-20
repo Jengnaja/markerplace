@@ -10,10 +10,11 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../../services/firebase';
 
@@ -125,6 +126,31 @@ export default function ProductsTabScreen() {
     }, [])
   );
 
+  // 🗑️ ฟังก์ชันสำหรับลบสินค้าออกจาก Firestore
+  const handleDeleteProduct = (productId: string, productTitle: string) => {
+    Alert.alert(
+      'ยืนยันการลบสินค้า',
+      `คุณต้องการลบ "${productTitle || 'สินค้านี้'}" ออกจากร้านใช่หรือไม่?`,
+      [
+        { text: 'ยกเลิก', style: 'cancel' },
+        {
+          text: 'ลบสินค้า',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'products', productId));
+              setProducts((prev) => prev.filter((p) => p.id !== productId));
+              Alert.alert('สำเร็จ', 'ลบสินค้าออกจากร้านเรียบร้อยแล้ว');
+            } catch (error) {
+              console.log('Error deleting product:', error);
+              Alert.alert('ผิดพลาด', 'ไม่สามารถลบสินค้าได้ กรุณาลองใหม่อีกครั้ง');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // 🔍 กรองสินค้าตามคำค้นหาและหมวดหมู่
   useEffect(() => {
     let result = products;
@@ -160,11 +186,22 @@ export default function ProductsTabScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#faf9f5" />
 
-      {/* Header */}
+      {/* 🟢 Header พร้อมปุ่มเพิ่มสินค้าสำหรับผู้ขาย */}
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle}>
           {isSeller ? 'จัดการสินค้าในร้าน 📦' : 'สินค้าทั้งหมด 📦'}
         </Text>
+
+        {isSeller && (
+          <TouchableOpacity
+            style={styles.addProductHeaderBtn}
+            activeOpacity={0.8}
+            onPress={() => router.push('/add-product' as any)}
+          >
+            <Ionicons name="add" size={18} color="#ffffff" />
+            <Text style={styles.addProductHeaderBtnText}>เพิ่มสินค้า</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* 🔍 ช่องค้นหา */}
@@ -222,6 +259,15 @@ export default function ProductsTabScreen() {
           <Text style={styles.emptyText}>
             {isSeller ? 'คุณยังไม่มีสินค้าในร้านค้าของคุณ' : 'ไม่พบสินค้าที่ค้นหา'}
           </Text>
+          {isSeller && (
+            <TouchableOpacity
+              style={styles.addFirstProductBtn}
+              onPress={() => router.push('/add-product' as any)}
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#ffffff" />
+              <Text style={styles.addFirstProductText}>เพิ่มสินค้าชิ้นแรกเลย</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <FlatList
@@ -251,18 +297,28 @@ export default function ProductsTabScreen() {
                 <Text style={styles.productPrice}>฿ {item.price}</Text>
               </View>
 
-              {/* ✏️ สลับปุ่มระหว่าง "แก้ไข" (ฝั่งผู้ขาย) และ "ตะกร้า" (ฝั่งผู้ซื้อ) */}
+              {/* 🟢 ปุ่มการทำงานฝั่งผู้ขาย: แก้ไข + ลบ / ฝั่งผู้ซื้อ: ตะกร้า */}
               {isSeller ? (
-                <TouchableOpacity
-                  style={styles.editBtn}
-                  activeOpacity={0.8}
-                  onPress={() =>
-                    router.push({ pathname: '/edit-product', params: { id: item.id } } as any)
-                  }
-                >
-                  <Ionicons name="create-outline" size={20} color="#1a5d3a" />
-                  <Text style={styles.editBtnText}>แก้ไข</Text>
-                </TouchableOpacity>
+                <View style={styles.sellerActionGroup}>
+                  <TouchableOpacity
+                    style={styles.editBtn}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      router.push({ pathname: '/edit-product', params: { id: item.id } } as any)
+                    }
+                  >
+                    <Ionicons name="create-outline" size={16} color="#1a5d3a" />
+                    <Text style={styles.editBtnText}>แก้ไข</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    activeOpacity={0.8}
+                    onPress={() => handleDeleteProduct(item.id, item.title || item.name)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
               ) : (
                 <TouchableOpacity
                   style={styles.cartBtn}
@@ -285,8 +341,27 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
   emptyText: { fontSize: 15, color: '#64748b' },
-  headerRow: { paddingHorizontal: 20, paddingVertical: 14, alignItems: 'center' },
+
+  /* 🟢 Header */
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#1a5d3a' },
+  addProductHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a5d3a',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+    gap: 4,
+  },
+  addProductHeaderBtnText: { color: '#ffffff', fontSize: 13, fontWeight: 'bold' },
+
   searchWrapper: { paddingHorizontal: 16, marginBottom: 14 },
   searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 25, paddingHorizontal: 16, height: 46, borderWidth: 1, borderColor: '#e2e8f0' },
   searchIcon: { marginRight: 8 },
@@ -304,16 +379,21 @@ const styles = StyleSheet.create({
   sellerName: { fontSize: 12, color: '#64748b' },
   productPrice: { fontSize: 16, fontWeight: 'bold', color: '#1a5d3a', marginTop: 2 },
   cartBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  
-  /* ✏️ สไตล์ปุ่มแก้ไข */
+
+  /* ✏️ ปุ่มกลุ่มการทำงานของผู้ขาย (แก้ไข + ลบ) */
+  sellerActionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#e8f5e9',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#a5d6a7',
   },
@@ -322,4 +402,24 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1a5d3a',
   },
-}); 
+  deleteBtn: {
+    backgroundColor: '#fef2f2',
+    padding: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+  },
+
+  /* ➕ ปุ่มเพิ่มสินค้าในกรณีไม่มีรายการสินค้า */
+  addFirstProductBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a5d3a',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
+    marginTop: 8,
+  },
+  addFirstProductText: { color: '#ffffff', fontSize: 14, fontWeight: 'bold' },
+});

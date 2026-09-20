@@ -13,12 +13,13 @@ import {
   Alert,
   Image,
 } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { signOut, updateProfile } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc,serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../../../services/firebase';
 
 export default function ProfileScreen() {
@@ -93,7 +94,7 @@ export default function ProfileScreen() {
     }
   };
 
-  // 💾 บันทึกการแก้ไขโปรไฟล์ (ย่อพิกเซลเหลือ 300x300 แล้วแปลงเป็น Base64 ขนาดเล็ก)
+  // 💾 บันทึกการแก้ไขโปรไฟล์
   const handleSaveProfile = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
@@ -107,7 +108,6 @@ export default function ProfileScreen() {
     try {
       let finalAvatarUrl = editAvatar;
 
-      // 🟢 ถ้ารูปเป็น file:// จากเครื่อง ให้ย่อขนาดเหลือ 300x300px และแปลงเป็น Base64 ทันที
       if (editAvatar && editAvatar.startsWith('file://')) {
         const manipResult = await ImageManipulator.manipulateAsync(
           editAvatar,
@@ -117,13 +117,11 @@ export default function ProfileScreen() {
         finalAvatarUrl = `data:image/jpeg;base64,${manipResult.base64}`;
       }
 
-      // 1. อัปเดต Display Name ใน Auth
       await updateProfile(currentUser, {
         displayName: editName,
         photoURL: finalAvatarUrl?.startsWith('data:') ? currentUser.photoURL : finalAvatarUrl,
       });
 
-      // 2. บันทึกข้อมูลลง Firestore
       await updateDoc(doc(db, 'users', currentUser.uid), {
         fullName: editName,
         phone: editPhone,
@@ -153,31 +151,38 @@ export default function ProfileScreen() {
   };
 
   // 🚪 ออกจากระบบ
-  const handleLogout = () => {
-    Alert.alert('ออกจากระบบ', 'คุณต้องการออกจากระบบใช่หรือไม่?', [
-      { text: 'ยกเลิก', style: 'cancel' },
-      {
-        text: 'ออกจากระบบ',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await signOut(auth);
-            router.replace('/login' as any);
-          } catch (error) {
-            console.log('Error signing out:', error);
+const handleLogout = () => {
+  Alert.alert('ออกจากระบบ', 'คุณต้องการออกจากระบบใช่หรือไม่?', [
+    { text: 'ยกเลิก', style: 'cancel' },
+    {
+      text: 'ออกจากระบบ',
+      style: 'destructive',
+      onPress: async () => {
+        try {
+          const currentUser = auth.currentUser;
+          
+          if (currentUser) {
+            // 1. อัปเดตสถานะเป็นออฟไลน์ใน Firestore ก่อนออกจากระบบ
+            const userRef = doc(db, 'users', currentUser.uid);
+            await updateDoc(userRef, {
+              isOnline: false,
+              lastSeen: serverTimestamp(), // อย่าลืม import serverTimestamp จาก firebase/firestore นะครับ
+            });
           }
-        },
-      },
-    ]);
-  };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1a5d3a" />
-      </View>
-    );
-  }
+          // 2. ค่อยสั่งออกจากระบบผ่าน Auth
+          await signOut(auth);
+          
+          // 3. เปลี่ยนเส้นทางไปหน้า Login / Welcome
+          router.replace('/login' as any);
+          
+        } catch (error) {
+          console.log('Error signing out:', error);
+        }
+      },
+    },
+  ]);
+};
 
   const currentUser = auth.currentUser;
   const avatarUrl =
@@ -186,13 +191,17 @@ export default function ProfileScreen() {
     userData?.photoURL ||
     currentUser?.photoURL;
 
+  // 🟢 ตรวจสอบสถานะผู้ขายแบบยืดหยุ่น
+  const roleStr = (userData?.role || userData?.userType || '').toString().toLowerCase();
+  const isSeller = roleStr === 'seller' || roleStr === 'ร้านค้า' || userData?.isSeller === true;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#faf9f5" />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* 👤 Header Profile + รูปโปรไฟล์ */}
+        {/* Header Profile */}
         <View style={styles.profileHeader}>
           <TouchableOpacity activeOpacity={0.8} onPress={() => setIsEditModalOpen(true)} style={styles.avatarWrapper}>
             {avatarUrl ? (
@@ -210,7 +219,6 @@ export default function ProfileScreen() {
           </Text>
           <Text style={styles.userEmail}>{currentUser?.email || ''}</Text>
 
-          {/* ✏️ ปุ่มแก้ไขโปรไฟล์ */}
           <TouchableOpacity
             style={styles.editProfileBtn}
             activeOpacity={0.8}
@@ -221,11 +229,11 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 📋 เมนูหลัก */}
+        {/* เมนูหลัก */}
         <View style={styles.menuSection}>
           <Text style={styles.sectionTitle}>การจัดการบัญชี</Text>
 
-          {/* 📦 ปุ่มติดตามสถานะคำสั่งซื้อ */}
+          {/* ปุ่มติดตามสถานะคำสั่งซื้อ */}
           <TouchableOpacity
             style={styles.menuItem}
             activeOpacity={0.7}
@@ -242,7 +250,7 @@ export default function ProfileScreen() {
 
           <View style={styles.divider} />
 
-          {/* 📍 ปุ่มแก้ไขข้อมูลที่อยู่ */}
+          {/* ปุ่มแก้ไขข้อมูลที่อยู่ */}
           <TouchableOpacity
             style={styles.menuItem}
             activeOpacity={0.7}
@@ -263,14 +271,14 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
           </TouchableOpacity>
 
-          {/* 🟢 🏪 แสดงปุ่มจัดการสินค้าเฉพาะผู้ใช้ที่เป็น 'seller' */}
-          {userData?.role === 'seller' && (
+          {/* 🟢 แสดงปุ่มจัดการสินค้าเฉพาะผู้ใช้ที่เป็น 'seller' (เปลี่ยนไปที่แท็บ products) */}
+          {isSeller && (
             <>
               <View style={styles.divider} />
               <TouchableOpacity
                 style={styles.menuItem}
                 activeOpacity={0.7}
-                onPress={() => router.push('/my-products' as any)}
+                onPress={() => router.push('/(tabs)/products' as any)}
               >
                 <View style={styles.menuLeft}>
                   <View style={[styles.menuIconBg, { backgroundColor: '#fef3c7' }]}>
@@ -287,7 +295,7 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* 🚪 ปุ่มออกจากระบบ */}
+        {/* ปุ่มออกจากระบบ */}
         <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.8} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color="#ef4444" />
           <Text style={styles.logoutBtnText}>ออกจากระบบ</Text>
@@ -295,13 +303,12 @@ export default function ProfileScreen() {
 
       </ScrollView>
 
-      {/* 📝 Modal แก้ไขโปรไฟล์ */}
+      {/* Modal แก้ไขโปรไฟล์ */}
       <Modal visible={isEditModalOpen} transparent animationType="slide" onRequestClose={() => setIsEditModalOpen(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>แก้ไขข้อมูลโปรไฟล์</Text>
 
-            {/* เลือกรูปใน Modal */}
             <TouchableOpacity style={{ alignItems: 'center', marginVertical: 8 }} onPress={handlePickAvatar}>
               <View style={styles.modalAvatarWrapper}>
                 {editAvatar ? (

@@ -5,7 +5,30 @@
  * It deletes or moves the /src and /scripts directories to /example based on user input and creates a new /src/app directory with an index.tsx and _layout.tsx file.
  * You can remove the `reset-project` script from package.json and safely delete this file after running it.
  */
+document.getElementById('userImageFile').value = ""; // รีเซ็ตช่องเลือกไฟล์
+  document.getElementById('imageStatusText').innerText = "";
+  document.getElementById('userAvatarInput').value = u.profileImage || u.avatarUrl || "";
+// 🪄 ฟังก์ชันแปลงไฟล์รูปภาพที่เลือกให้เป็น Base64
+  window.handleImageToBase64 = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
 
+    // ตรวจสอบขนาดไฟล์ไม่ให้ใหญ่เกินไป (เช่น ไม่เกิน 1MB เพราะ Base64 จะกินพื้นที่ Firestore)
+    if (file.size > 1024 * 1024) {
+      Swal.fire({ icon: 'warning', title: 'ไฟล์มีขนาดใหญ่เกินไป', text: 'กรุณาเลือกภาพที่มีขนาดต่ำกว่า 1MB เพื่อป้องกันฐานข้อมูลเต็ม' });
+      event.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(uploadEvent) {
+      const base64String = uploadEvent.target.result;
+      // เก็บค่า Base64 ไว้ใน hidden input
+      document.getElementById('userAvatarInput').value = base64String;
+      document.getElementById('imageStatusText').innerHTML = '<i class="fa-solid fa-circle-check"></i> แปลงไฟล์รูปภาพเป็น Base64 เรียบร้อยพร้อมบันทึก';
+    };
+    reader.readAsDataURL(file);
+  };
 const fs = require("fs");
 const path = require("path");
 const readline = require("readline");

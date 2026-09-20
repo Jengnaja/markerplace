@@ -1,336 +1,415 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   SafeAreaView,
-  ActivityIndicator,
-  Image,
-  Modal,
   StatusBar,
-  KeyboardAvoidingView,
-  Platform,
+  ScrollView,
+  Image,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { collection, addDoc } from 'firebase/firestore';
-import { auth, db } from '../../services/firebase';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { collection, addDoc, doc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth, db } from '../../services/firebase';
 
 const CATEGORIES = [
-  { id: 'processed', name: 'สินค้าแปรรูป', icon: 'cube-outline' },
-  { id: 'food', name: 'อาหาร', icon: 'restaurant-outline' },
-  { id: 'handicraft', name: 'หัตถกรรม', icon: 'basket-outline' },
-  { id: 'herb', name: 'สมุนไพร', icon: 'leaf-outline' },
+  { id: 'food', name: 'อาหาร' },
+  { id: 'handicraft', name: 'หัตถกรรม' },
+  { id: 'herb', name: 'สมุนไพร' },
+  { id: 'processed', name: 'แปรรูป' },
 ];
 
 export default function AddProductScreen() {
+  const router = useRouter();
+
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // ฟอร์มสินค้า
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('processed');
-  const [productImage, setProductImage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [category, setCategory] = useState('food');
+  const [imageUri, setImageUri] = useState<string | null>(null);
 
-  const router = useRouter();
-  const currentUser = auth.currentUser;
+  // 🟢 ตรวจสอบสถานะการเข้าสู่ระบบและสิทธิ์ร้านค้า
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        Alert.alert('กรุณาล็อกอิน', 'คุณต้องเข้าสู่ระบบก่อนเพิ่มสินค้า');
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/login' as any);
+        }
+        setCheckingAuth(false);
+        return;
+      }
 
-  const [alertConfig, setAlertConfig] = useState<{
-    visible: boolean;
-    type: 'error' | 'warning';
-    title: string;
-    message: string;
-  }>({
-    visible: false,
-    type: 'error',
-    title: '',
-    message: '',
-  });
+      setCurrentUser(user);
 
-  const showAlert = (type: 'error' | 'warning', title: string, message: string) => {
-    setAlertConfig({ visible: true, type, title, message });
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as any;
+          const roleStr = (
+            userData?.role ||
+            userData?.userType ||
+            userData?.type ||
+            ''
+          ).toString().toLowerCase();
+
+          const isSeller =
+            roleStr === 'seller' ||
+            roleStr === 'ร้านค้า' ||
+            userData?.isSeller === true;
+
+          if (!isSeller) {
+            Alert.alert('ไม่มีสิทธิ์เข้าถึง', 'เฉพาะผู้ใช้บทบาทร้านค้าเท่านั้นที่สามารถเพิ่มสินค้าได้');
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/home' as any);
+            }
+          }
+        }
+      } catch (error) {
+        console.log('Error verifying seller role:', error);
+      } finally {
+        setCheckingAuth(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // 🟢 ป๊อปอัพให้เลือกวิธีเพิ่มรูป (ถ่ายภาพ / เลือกจากอัลบั้ม)
+  const handleSelectImageSource = () => {
+    Alert.alert(
+      'เลือกรูปภาพสินค้า',
+      'กรุณาเลือกช่องทางที่ต้องการนำรูปภาพเข้า',
+      [
+        {
+          text: '📷 ถ่ายภาพด้วยกล้อง',
+          onPress: handleTakePhoto,
+        },
+        {
+          text: '🖼️ เลือกจากคลังภาพ',
+          onPress: handlePickFromLibrary,
+        },
+        {
+          text: 'ยกเลิก',
+          style: 'cancel',
+        },
+      ]
+    );
   };
 
-  const hideAlert = () => {
-    setAlertConfig((prev) => ({ ...prev, visible: false }));
+  // 📸 1. ถ่ายภาพด้วยกล้อง
+  const handleTakePhoto = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert('แจ้งเตือน', 'กรุณานุญาตให้เข้าถึงกล้องถ่ายรูปเพื่อถ่ายภาพสินค้า');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.6,
+    });
+
+    if (!result.canceled && result.assets[0].uri) {
+      setImageUri(result.assets[0].uri);
+    }
   };
 
-  // 📸 เลือกรูปและบีบอัดขนาดเพื่อป้องกันข้อมูลใหญ่เกินไป
-  const pickImage = async () => {
+  // 🖼️ 2. เลือกรูปภาพจากคลังภาพ
+  const handlePickFromLibrary = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
-      showAlert('warning', 'สิทธิ์เข้าถึง', 'กรุณาอนุญาตการเข้าถึงคลังภาพเพื่อเลือกรูปสินค้า');
+      Alert.alert('แจ้งเตือน', 'กรุณานุญาตให้เข้าถึงคลังรูปภาพเพื่อเลือกรูปสินค้า');
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.2, // 👈 บีบอัดภาพให้เล็กลง
+      aspect: [4, 3],
+      quality: 0.6,
     });
 
     if (!result.canceled && result.assets[0].uri) {
-      setProductImage(result.assets[0].uri);
+      setImageUri(result.assets[0].uri);
     }
   };
 
-  // 🚀 บันทึกสินค้าลง Firestore พร้อมแปลงรูปเป็น Base64
-  const handleSaveProduct = async () => {
-    if (!title.trim() || !price.trim() || !productImage) {
-      showAlert('warning', 'ข้อมูลไม่ครบถ้วน', 'กรุณากรอกชื่อสินค้า ราคา และเลือกรูปภาพสินค้า');
+  // 💾 บันทึกสินค้าลง Firestore
+  const handleAddProduct = async () => {
+    if (!title.trim()) {
+      Alert.alert('ข้อมูลไม่ครบถ้วน', 'กรุณากรอกชื่อสินค้า');
+      return;
+    }
+    if (!price.trim() || isNaN(Number(price))) {
+      Alert.alert('ข้อมูลไม่ครบถ้วน', 'กรุณากรอกราคาสินค้าเป็นตัวเลข');
+      return;
+    }
+    if (!imageUri) {
+      Alert.alert('ข้อมูลไม่ครบถ้วน', 'กรุณาเลือกหรือถ่ายรูปภาพสินค้า');
       return;
     }
 
-    if (!currentUser) {
-      showAlert('error', 'ข้อผิดพลาด', 'ไม่พบข้อมูลผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่');
-      return;
-    }
-
-    setLoading(true);
-
+    setSubmitting(true);
     try {
-      console.log('📦 กำลังแปลงรูปภาพและบันทึกสินค้าลง Firestore...');
-      
-      let finalProductImage = productImage;
+      let finalImageBase64 = imageUri;
 
-      // 🟢 ถ้าเป็นรูปใหม่จากเครื่อง (file://) ให้แปลงเป็น Base64 ก่อนบันทึก
-      if (productImage.startsWith('file://')) {
-        finalProductImage = await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.onload = function () {
-            const reader = new FileReader();
-            reader.onloadend = function () {
-              resolve(reader.result as string);
-            };
-            reader.readAsDataURL(xhr.response);
-          };
-          xhr.onerror = function (e) {
-            reject(e);
-          };
-          xhr.responseType = 'blob';
-          xhr.open('GET', productImage, true);
-          xhr.send(null);
-        });
+      // แปลงรูปเป็น Base64 ขนาดเล็กเพื่อจัดเก็บใน Firestore
+      if (imageUri.startsWith('file://')) {
+        const manipResult = await ImageManipulator.manipulateAsync(
+          imageUri,
+          [{ resize: { width: 500 } }],
+          { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+        finalImageBase64 = `data:image/jpeg;base64,${manipResult.base64}`;
       }
 
-      const docRef = await addDoc(collection(db, 'products'), {
-        sellerId: currentUser.uid,
+      await addDoc(collection(db, 'products'), {
         title: title.trim(),
-        price: parseFloat(price) || 0,
-        category: selectedCategory,
+        name: title.trim(),
+        price: Number(price),
         description: description.trim(),
-        image: finalProductImage, // 👈 บันทึกเป็น Base64 String ถาวร
-        createdAt: new Date().toISOString(),
+        category,
+        image: finalImageBase64,
+        sellerId: currentUser.uid,
+        userId: currentUser.uid,
+        ownerId: currentUser.uid,
+        createdAt: serverTimestamp(),
       });
 
-      console.log('✅ บันทึกสำเร็จ! Document ID:', docRef.id);
-      router.back();
-    } catch (error: any) {
-      console.log('❌ Error adding product:', error);
-      showAlert(
-        'error',
-        'บันทึกไม่สำเร็จ',
-        error.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล กรุณาลองใหม่อีกครั้ง'
-      );
+      Alert.alert('สำเร็จ! 🎉', 'เพิ่มสินค้าใหม่เรียบร้อยแล้ว', [
+        {
+          text: 'ตกลง',
+          onPress: () => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/products' as any);
+            }
+          },
+        },
+      ]);
+    } catch (error) {
+      console.log('Error adding product:', error);
+      Alert.alert('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกสินค้าได้ กรุณาลองใหม่อีกครั้ง');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
+
+  // 🔙 ปุ่มย้อนกลับ
+  const handleGoBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/products' as any);
+    }
+  };
+
+  if (checkingAuth) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#1a5d3a" />
+        <Text style={styles.loadingText}>กำลังตรวจสอบสิทธิ์...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#faf9f5" />
 
-      {/* Header */}
-      <View style={styles.headerRow}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#1a5d3a" />
+      {/* Header Nav */}
+      <View style={styles.headerNav}>
+        <TouchableOpacity style={styles.backBtn} onPress={handleGoBack}>
+          <Ionicons name="chevron-back" size={26} color="#0f172a" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>เพิ่มสินค้าใหม่ 📦</Text>
-        <View style={{ width: 40 }} />
+        <View style={{ width: 32 }} />
       </View>
 
-      {/* Modal แจ้งเตือน */}
-      <Modal transparent visible={alertConfig.visible} animationType="fade" onRequestClose={hideAlert}>
-        <View style={styles.alertOverlay}>
-          <View style={styles.alertBox}>
-            <View
-              style={[
-                styles.alertIconBg,
-                alertConfig.type === 'error' && { backgroundColor: '#ffebee' },
-                alertConfig.type === 'warning' && { backgroundColor: '#fff3e0' },
-              ]}
-            >
-              <Ionicons
-                name={alertConfig.type === 'error' ? 'close-circle-outline' : 'alert-circle-outline'}
-                size={52}
-                color={alertConfig.type === 'error' ? '#d32f2f' : '#ed6c02'}
-              />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {/* เลือกรูปภาพสินค้า */}
+        <Text style={styles.inputLabel}>รูปภาพสินค้า *</Text>
+        <TouchableOpacity style={styles.imagePickerBox} activeOpacity={0.8} onPress={handleSelectImageSource}>
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Ionicons name="camera-outline" size={36} color="#1a5d3a" />
+              <Text style={styles.imagePlaceholderText}>กดเพื่อถ่ายภาพหรือเลือกรูปสินค้า</Text>
             </View>
-            <Text style={styles.alertTitle}>{alertConfig.title}</Text>
-            <Text style={styles.alertMessage}>{alertConfig.message}</Text>
-            <TouchableOpacity
-              style={[
-                styles.alertButton,
-                alertConfig.type === 'error' && { backgroundColor: '#d32f2f' },
-                alertConfig.type === 'warning' && { backgroundColor: '#ed6c02' },
-              ]}
-              onPress={hideAlert}
-            >
-              <Text style={styles.alertButtonText}>ตกลง</Text>
-            </TouchableOpacity>
-          </View>
+          )}
+        </TouchableOpacity>
+
+        {/* ชื่อสินค้า */}
+        <Text style={styles.inputLabel}>ชื่อสินค้า *</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="เช่น น้ำพริกเผาโบราณ, ผ้าขาวม้าทอมือ"
+          placeholderTextColor="#94a3b8"
+          value={title}
+          onChangeText={setTitle}
+        />
+
+        {/* ราคาสินค้า */}
+        <Text style={styles.inputLabel}>ราคา (บาท) *</Text>
+        <TextInput
+          style={styles.textInput}
+          placeholder="เช่น 150"
+          placeholderTextColor="#94a3b8"
+          keyboardType="numeric"
+          value={price}
+          onChangeText={setPrice}
+        />
+
+        {/* หมวดหมู่สินค้า */}
+        <Text style={styles.inputLabel}>หมวดหมู่สินค้า *</Text>
+        <View style={styles.categoryContainer}>
+          {CATEGORIES.map((cat) => {
+            const isSelected = category === cat.id;
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.categoryOption, isSelected && styles.categoryOptionActive]}
+                onPress={() => setCategory(cat.id)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.categoryOptionText, isSelected && styles.categoryOptionTextActive]}>
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-      </Modal>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-          
-          {/* รูปภาพสินค้า */}
-          <View style={styles.imageSection}>
-            <TouchableOpacity activeOpacity={0.8} style={styles.imagePickerBox} onPress={pickImage}>
-              {productImage ? (
-                <Image source={{ uri: productImage }} style={styles.previewImage} />
-              ) : (
-                <View style={styles.placeholderContainer}>
-                  <Ionicons name="camera-outline" size={42} color="#1a5d3a" />
-                  <Text style={styles.placeholderText}>เพิ่มรูปภาพสินค้า</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
+        {/* รายละเอียดสินค้า */}
+        <Text style={styles.inputLabel}>รายละเอียดสินค้าเพิ่มเติม</Text>
+        <TextInput
+          style={[styles.textInput, styles.textArea]}
+          placeholder="อธิบายรายละเอียดสินค้า วัตถุดิบ หรือขนาด..."
+          placeholderTextColor="#94a3b8"
+          multiline
+          numberOfLines={4}
+          value={description}
+          onChangeText={setDescription}
+        />
 
-          <View style={styles.formContainer}>
-            {/* ชื่อสินค้า */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>ชื่อสินค้า</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="pricetag-outline" size={20} color="#888" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="เช่น ข้าวกล้องอินทรีย์, กระเป๋าสาน"
-                  placeholderTextColor="#aaa"
-                  value={title}
-                  onChangeText={setTitle}
-                />
-              </View>
-            </View>
+        {/* ปุ่มบันทึก */}
+        <TouchableOpacity
+          style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
+          activeOpacity={0.85}
+          onPress={handleAddProduct}
+          disabled={submitting}
+        >
+          {submitting ? (
+            <ActivityIndicator size="small" color="#ffffff" />
+          ) : (
+            <>
+              <Ionicons name="checkmark-circle-outline" size={20} color="#ffffff" />
+              <Text style={styles.submitBtnText}>บันทึกเพิ่มสินค้า</Text>
+            </>
+          )}
+        </TouchableOpacity>
 
-            {/* ราคา */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>ราคา (บาท)</Text>
-              <View style={styles.inputWrapper}>
-                <Ionicons name="cash-outline" size={20} color="#888" style={styles.inputIcon} />
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="0.00"
-                  placeholderTextColor="#aaa"
-                  keyboardType="numeric"
-                  value={price}
-                  onChangeText={setPrice}
-                />
-              </View>
-            </View>
-
-            {/* หมวดหมู่สินค้า */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>ประเภทสินค้า</Text>
-              <View style={styles.categoryRow}>
-                {CATEGORIES.map((cat) => {
-                  const isSelected = selectedCategory === cat.id;
-                  return (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[styles.categoryChip, isSelected && styles.categoryChipActive]}
-                      onPress={() => setSelectedCategory(cat.id)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons
-                        name={cat.icon as any}
-                        size={18}
-                        color={isSelected ? '#ffffff' : '#1a5d3a'}
-                      />
-                      <Text style={[styles.categoryChipText, isSelected && styles.categoryChipTextActive]}>
-                        {cat.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* รายละเอียด */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>รายละเอียดสินค้า</Text>
-              <View style={[styles.inputWrapper, { height: 90, alignItems: 'flex-start', paddingTop: 10 }]}>
-                <Ionicons name="document-text-outline" size={20} color="#888" style={styles.inputIcon} />
-                <TextInput
-                  style={[styles.textInput, { textAlignVertical: 'top' }]}
-                  placeholder="อธิบายรายละเอียดสินค้า..."
-                  placeholderTextColor="#aaa"
-                  multiline
-                  numberOfLines={4}
-                  value={description}
-                  onChangeText={setDescription}
-                />
-              </View>
-            </View>
-
-            {/* ปุ่มบันทึก */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[styles.submitButton, loading && styles.disabledButton]}
-              onPress={handleSaveProduct}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={styles.submitButtonText}>บันทึกและลงขายสินค้า 🛒</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#ffffff' },
-  scrollContent: { paddingHorizontal: 22, paddingBottom: 40 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
-  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f2f7f4', justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#1a5d3a' },
-  imageSection: { alignItems: 'center', marginVertical: 16 },
-  imagePickerBox: { width: '100%', height: 180, borderRadius: 16, borderWidth: 2, borderColor: '#e2e8f0', borderStyle: 'dashed', backgroundColor: '#f8fafc', overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
-  previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  placeholderContainer: { alignItems: 'center', gap: 6 },
-  placeholderText: { fontSize: 14, fontWeight: 'bold', color: '#1a5d3a' },
-  formContainer: { gap: 16 },
-  inputGroup: { gap: 6 },
-  inputLabel: { fontSize: 14, fontWeight: '600', color: '#333333' },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingHorizontal: 14, height: 50, backgroundColor: '#f8fafc' },
-  inputIcon: { marginRight: 10 },
-  textInput: { flex: 1, fontSize: 15, color: '#1e293b' },
-  categoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  categoryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#1a5d3a', backgroundColor: '#ffffff' },
-  categoryChipActive: { backgroundColor: '#1a5d3a' },
-  categoryChipText: { fontSize: 13, fontWeight: '600', color: '#1a5d3a' },
-  categoryChipTextActive: { color: '#ffffff' },
-  submitButton: { backgroundColor: '#1a5d3a', height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', marginTop: 12, elevation: 3 },
-  disabledButton: { backgroundColor: '#8cb89f' },
-  submitButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
-  alertOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.45)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-  alertBox: { width: '85%', backgroundColor: '#ffffff', borderRadius: 24, padding: 24, alignItems: 'center', elevation: 8 },
-  alertIconBg: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  alertTitle: { fontSize: 20, fontWeight: 'bold', color: '#1e293b', marginBottom: 8, textAlign: 'center' },
-  alertMessage: { fontSize: 14, color: '#64748b', textAlign: 'center', marginBottom: 22, lineHeight: 20 },
-  alertButton: { width: '100%', height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
-  alertButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+  safeArea: { flex: 1, backgroundColor: '#faf9f5' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
+  loadingText: { fontSize: 14, color: '#64748b' },
+  headerNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    backgroundColor: '#ffffff',
+  },
+  backBtn: { padding: 4 },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1a5d3a' },
+  scrollContent: { padding: 20, gap: 12 },
+  inputLabel: { fontSize: 14, fontWeight: 'bold', color: '#0f172a', marginTop: 4 },
+  textInput: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0f172a',
+  },
+  textArea: {
+    height: 90,
+    textAlignVertical: 'top',
+  },
+  imagePickerBox: {
+    width: '100%',
+    height: 180,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderStyle: 'dashed',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  imagePlaceholder: { alignItems: 'center', gap: 6 },
+  imagePlaceholderText: { fontSize: 13, color: '#64748b', fontWeight: '500' },
+  previewImage: { width: '100%', height: '100%' },
+  categoryContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 4 },
+  categoryOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  categoryOptionActive: {
+    backgroundColor: '#1a5d3a',
+    borderColor: '#1a5d3a',
+  },
+  categoryOptionText: { fontSize: 13, color: '#475569', fontWeight: '600' },
+  categoryOptionTextActive: { color: '#ffffff' },
+  submitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1a5d3a',
+    height: 50,
+    borderRadius: 25,
+    marginTop: 16,
+    gap: 8,
+    elevation: 2,
+  },
+  submitBtnDisabled: { opacity: 0.7 },
+  submitBtnText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
 });

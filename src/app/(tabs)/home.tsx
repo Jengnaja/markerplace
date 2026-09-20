@@ -11,21 +11,23 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../../../services/firebase';
 
 const { width } = Dimensions.get('window');
 
 const CATEGORIES = [
-  { id: 'all', name: 'ทั้งหมด' },
-  { id: 'food', name: 'อาหาร' },
-  { id: 'handicraft', name: 'หัตถกรรม' },
-  { id: 'herb', name: 'สมุนไพร' },
-  { id: 'processed', name: 'แปรรูป' },
+  { id: 'all', name: 'ทั้งหมด', icon: 'grid-outline' },
+  { id: 'processed', name: 'สินค้าแปรรูป', icon: 'cube-outline' },
+  { id: 'food', name: 'อาหาร', icon: 'restaurant-outline' },
+  { id: 'handicraft', name: 'หัตถกรรม', icon: 'color-palette-outline' },
+  { id: 'herb', name: 'สมุนไพร', icon: 'leaf-outline' },
 ];
 
 export default function HomeScreen() {
@@ -37,7 +39,64 @@ export default function HomeScreen() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [isSeller, setIsSeller] = useState(false);
 
-  // 🟢 ดึงข้อมูลสินค้าโดยรอยืนยัน Auth สถานะที่แน่นอน
+  // 🟢 ตรวจสอบสถานะการล็อกอินและตั้งเวลา 5 วินาที (ถ้ายังไม่ล็อกอิน ให้ไปหน้า welcome)
+  useEffect(() => {
+    let isMounted = true;
+
+    // ตั้งเวลา 5 วินาที ถ้ายังไม่มีการยืนยันตัวตน ให้เด้งไปหน้า welcome
+    const timeoutId = setTimeout(() => {
+      if (isMounted && !auth.currentUser) {
+        router.replace('/welcome' as any); // เปลี่ยนเส้นทางไปหน้า welcome
+      }
+    }, 5000);
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (!user && isMounted) {
+        // หากตรวจพบทันทีว่าไม่อยู่ในระบบ สามารถจัดการได้ หรือปล่อยให้ครบ 5 วิ
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+      unsubscribeAuth();
+    };
+  }, []);
+
+  // 🟢 1. ระบบอัปเดตสถานะออนไลน์ (isOnline & lastSeen)
+  useEffect(() => {
+    const updateStatus = async (status: boolean) => {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        try {
+          const userRef = doc(db, 'users', currentUser.uid);
+          await updateDoc(userRef, {
+            isOnline: status,
+            lastSeen: serverTimestamp(),
+          });
+        } catch (error) {
+          console.log('Error updating online status:', error);
+        }
+      }
+    };
+
+    updateStatus(true);
+
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        updateStatus(true);
+      } else if (nextAppState === 'background' || nextAppState === 'inactive') {
+        updateStatus(false);
+      }
+    });
+
+    return () => {
+      updateStatus(false);
+      subscription.remove();
+    };
+  }, []);
+
+  // 🟢 2. ดึงข้อมูลสินค้าและสิทธิ์ผู้ใช้
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
@@ -47,7 +106,6 @@ export default function HomeScreen() {
           let isUserSeller = false;
 
           if (user) {
-            // 1. ตรวจสอบสิทธิ์ผู้ใช้ใน Firestore
             const userDoc = await getDoc(doc(db, 'users', user.uid));
             if (userDoc.exists()) {
               const userData = userDoc.data() as any;
@@ -58,7 +116,6 @@ export default function HomeScreen() {
 
           setIsSeller(isUserSeller);
 
-          // 2. ดึงสินค้าทั้งหมดจากคอลเลกชัน products
           const querySnapshot = await getDocs(collection(db, 'products'));
           let productList: any[] = [];
 
@@ -77,7 +134,6 @@ export default function HomeScreen() {
             });
           });
 
-          // 3. ถ้าเป็นคนขาย ให้เห็นเฉพาะสินค้าของตนเองเท่านั้น
           if (isUserSeller && user) {
             productList = productList.filter((item) => {
               const ownerId = item.sellerId || item.userId || item.ownerId || item.uid || item.sellerUid;
@@ -97,11 +153,10 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // 🔍 กรองสินค้า (รองรับหมวดหมู่ทั้งภาษาไทยและอังกฤษ)
+  // 🔍 กรองสินค้าตามหมวดหมู่และคำค้นหา
   useEffect(() => {
     let result = products;
 
-    // กรองตามหมวดหมู่ (รองรับทั้ง ID อังกฤษ และชื่อภาษาไทยใน Firestore)
     if (selectedCategory !== 'all') {
       result = result.filter((item) => {
         if (!item.category) return false;
@@ -110,13 +165,12 @@ export default function HomeScreen() {
         if (selectedCategory === 'food') return catStr === 'food' || catStr === 'อาหาร';
         if (selectedCategory === 'handicraft') return catStr === 'handicraft' || catStr === 'หัตถกรรม';
         if (selectedCategory === 'herb') return catStr === 'herb' || catStr === 'สมุนไพร';
-        if (selectedCategory === 'processed') return catStr === 'processed' || catStr === 'แปรรูป';
+        if (selectedCategory === 'processed') return catStr === 'processed' || catStr === 'แปรรูป' || catStr === 'สินค้าแปรรูป';
         
         return catStr === selectedCategory;
       });
     }
 
-    // กรองตามช่องค้นหา
     if (searchQuery.trim() !== '') {
       const queryStr = searchQuery.toLowerCase();
       result = result.filter((item) => {
@@ -140,7 +194,7 @@ export default function HomeScreen() {
           <View>
             <Text style={styles.welcomeSubtext}>ยินดีต้อนรับสู่</Text>
             <Text style={styles.appName}>
-              {isSeller ? 'ร้านค้าของคุณ 🏪' : 'ตลาดชุมชนออนไลน์ 🌾'}
+              {isSeller ? 'ร้านค้าของคุณ 🏪' : 'ตลาดชุมชนนนทบุรี'}
             </Text>
           </View>
         </View>
@@ -172,17 +226,39 @@ export default function HomeScreen() {
         </View>
 
         {/* แถบเลือกหมวดหมู่ */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryScroll}
+        >
           {CATEGORIES.map((cat) => {
             const isSelected = selectedCategory === cat.id;
             return (
               <TouchableOpacity
                 key={cat.id}
-                style={[styles.categoryPill, isSelected && styles.categoryPillActive]}
+                style={styles.categoryItem}
                 onPress={() => setSelectedCategory(cat.id)}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.categoryText, isSelected && styles.categoryTextActive]}>
+                <View
+                  style={[
+                    styles.categoryIconBox,
+                    isSelected ? styles.categoryIconBoxActive : styles.categoryIconBoxInactive,
+                  ]}
+                >
+                  <Ionicons
+                    name={cat.icon as any}
+                    size={26}
+                    color={isSelected ? '#b45309' : '#1a5d3a'}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.categoryLabel,
+                    isSelected && styles.categoryLabelActive,
+                  ]}
+                  numberOfLines={1}
+                >
                   {cat.name}
                 </Text>
               </TouchableOpacity>
@@ -267,15 +343,46 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     borderRadius: 16,
     overflow: 'hidden',
-    marginBottom: 16,
+    marginBottom: 20,
     elevation: 2,
   },
   bannerImage: { width: '100%', height: '100%' },
-  categoryScroll: { paddingHorizontal: 20, gap: 10, marginBottom: 20 },
-  categoryPill: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e2e8f0' },
-  categoryPillActive: { backgroundColor: '#1a5d3a', borderColor: '#1a5d3a' },
-  categoryText: { fontSize: 14, color: '#475569', fontWeight: '600' },
-  categoryTextActive: { color: '#ffffff' },
+  categoryScroll: {
+    paddingHorizontal: 20,
+    gap: 16,
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  categoryItem: {
+    alignItems: 'center',
+    width: 68,
+    gap: 6,
+  },
+  categoryIconBox: {
+    width: 58,
+    height: 58,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  categoryIconBoxInactive: {
+    backgroundColor: '#dcfce7',
+  },
+  categoryIconBoxActive: {
+    backgroundColor: '#fef3c7',
+    borderWidth: 1.5,
+    borderColor: '#f59e0b',
+  },
+  categoryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+    textAlign: 'center',
+  },
+  categoryLabelActive: {
+    color: '#b45309',
+    fontWeight: 'bold',
+  },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#0f172a' },
   seeAllText: { fontSize: 14, color: '#1a5d3a', fontWeight: 'bold' },

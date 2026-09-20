@@ -33,16 +33,28 @@ export default function ProductDetailScreen() {
   const [rating, setRating] = useState<string>('5.0');
   const [reviewCount, setReviewCount] = useState<number>(0);
 
-  // Modal แจ้งเตือน
-  const [alertConfig, setAlertConfig] = useState<{ visible: boolean; type: 'success' | 'error' | 'warning'; title: string; message: string }>({
+  // Modal แจ้งเตือน (เพิ่ม state สำหรับเช็คว่าเป็นกรณีต้องไปหน้า welcome หรือไม่)
+  const [alertConfig, setAlertConfig] = useState<{
+    visible: boolean;
+    type: 'success' | 'error' | 'warning';
+    title: string;
+    message: string;
+    actionType?: 'cart' | 'welcome';
+  }>({
     visible: false,
     type: 'success',
     title: '',
     message: '',
+    actionType: 'cart',
   });
 
-  const showAlert = (type: 'success' | 'error' | 'warning', title: string, message: string) => {
-    setAlertConfig({ visible: true, type, title, message });
+  const showAlert = (
+    type: 'success' | 'error' | 'warning',
+    title: string,
+    message: string,
+    actionType: 'cart' | 'welcome' = 'cart'
+  ) => {
+    setAlertConfig({ visible: true, type, title, message, actionType });
   };
 
   useEffect(() => {
@@ -83,7 +95,13 @@ export default function ProductDetailScreen() {
   const handleAddToCart = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) {
-      showAlert('warning', 'เข้าสู่ระบบ', 'กรุณาเข้าสู่ระบบก่อนเพิ่มสินค้าลงตะกร้า');
+      // 🟢 หากยังไม่ล็อกอิน ให้แสดง Modal และตั้งค่า actionType เป็น 'welcome'
+      showAlert(
+        'warning',
+        'เข้าสู่ระบบ',
+        'กรุณาเข้าสู่ระบบก่อนเพิ่มสินค้าลงตะกร้า',
+        'welcome'
+      );
       return;
     }
 
@@ -116,10 +134,10 @@ export default function ProductDetailScreen() {
         });
       }
 
-      showAlert('success', 'สำเร็จ 🛒', `เพิ่ม "${product.title}" ลงตะกร้าแล้ว`);
+      showAlert('success', 'สำเร็จ 🛒', `เพิ่ม "${product.title}" ลงตะกร้าแล้ว`, 'cart');
     } catch (error: any) {
       console.log('Error adding to cart:', error);
-      showAlert('error', 'ข้อผิดพลาด', 'ไม่สามารถเพิ่มสินค้าลงตะกร้าได้');
+      showAlert('error', 'ข้อผิดพลาด', 'ไม่สามารถเพิ่มสินค้าลงตะกร้าได้', 'cart');
     } finally {
       setAddingToCart(false);
     }
@@ -138,24 +156,43 @@ export default function ProductDetailScreen() {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* Custom Modal */}
-      <Modal transparent visible={alertConfig.visible} animationType="fade" onRequestClose={() => setAlertConfig({ ...alertConfig, visible: false })}>
+      <Modal
+        transparent
+        visible={alertConfig.visible}
+        animationType="fade"
+        onRequestClose={() => setAlertConfig({ ...alertConfig, visible: false })}
+      >
         <View style={styles.alertOverlay}>
           <View style={styles.alertBox}>
             <Ionicons
               name={alertConfig.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
               size={56}
-              color={alertConfig.type === 'success' ? '#1a5d3a' : '#d32f2f'}
+              color={
+                alertConfig.type === 'success'
+                  ? '#1a5d3a'
+                  : alertConfig.type === 'warning'
+                  ? '#f59e0b'
+                  : '#d32f2f'
+              }
             />
             <Text style={styles.alertTitle}>{alertConfig.title}</Text>
             <Text style={styles.alertMessage}>{alertConfig.message}</Text>
+            
             <TouchableOpacity
               style={styles.alertButton}
               onPress={() => {
                 setAlertConfig({ ...alertConfig, visible: false });
-                if (alertConfig.type === 'success') router.push('/(tabs)/cart');
+                // 🟢 ตรวจสอบเงื่อนไขการนำทางปุ่มใน Modal
+                if (alertConfig.actionType === 'welcome') {
+                  router.push('/welcome' as any);
+                } else if (alertConfig.type === 'success') {
+                  router.push('/(tabs)/cart');
+                }
               }}
             >
-              <Text style={styles.alertButtonText}>ดูตะกร้าสินค้า</Text>
+              <Text style={styles.alertButtonText}>
+                {alertConfig.actionType === 'welcome' ? 'เข้าสู่ระบบ / สมัครสมาชิก' : 'ดูตะกร้าสินค้า'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -197,7 +234,9 @@ export default function ProductDetailScreen() {
             </Text>
           </View>
 
-          <Text style={styles.descriptionText}>{product.description || 'สินค้าคุณภาพจากชุมชน ผลิตด้วยภูมิปัญญาท้องถิ่น'}</Text>
+          <Text style={styles.descriptionText}>
+            {product.description || 'สินค้าคุณภาพจากชุมชน ผลิตด้วยภูมิปัญญาท้องถิ่น'}
+          </Text>
 
           <View style={styles.quantitySection}>
             <Text style={styles.quantityLabel}>จำนวน</Text>

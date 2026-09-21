@@ -17,7 +17,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { doc, getDoc, collection, getDocs, query, where, addDoc, deleteDoc } from 'firebase/firestore';
+
+// 🟢 เพิ่ม updateDoc เข้ามาจาก firebase/firestore
+import { doc, getDoc, collection, getDocs, query, where, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../../services/firebase';
 
 export default function CheckoutScreen() {
@@ -100,48 +102,73 @@ export default function CheckoutScreen() {
     Keyboard.dismiss();
   };
 
-// 🚀 กดสั่งซื้อสินค้า
-const handleConfirmOrder = async () => {
-  const currentUser = auth.currentUser;
-  if (!currentUser || cartItems.length === 0) return;
+  // 🚀 กดสั่งซื้อสินค้า
+  const handleConfirmOrder = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser || cartItems.length === 0) return;
 
-  setSubmitting(true);
-  try {
-    // 1. สร้าง Order ใน Firestore
-    const orderRef = await addDoc(collection(db, 'orders'), {
-      userId: currentUser.uid,
-      items: cartItems,
-      shippingAddress: { fullName, address, phone },
-      shippingMethod: shippingMethod === 'postal' ? 'ไปรษณีย์ไทย (3-5 วัน)' : 'ขนส่งเอกชน (1-2 วัน)',
-      paymentMethod: paymentMethod === 'transfer' ? 'โอนเงินผ่านธนาคาร' : 'เก็บเงินปลายทาง',
-      subtotalPrice,
-      shippingFee,
-      totalPrice,
-      // 🟢 ถ้าโอนเงินให้เป็น 'pending_payment' แต่ถ้าเก็บเงินปลายทางให้เป็น 'paid' (กำลังเตรียมจัดส่ง) ทันที
-      status: paymentMethod === 'transfer' ? 'pending_payment' : 'paid',
-      createdAt: new Date().toISOString(),
-    });
+    setSubmitting(true);
+    try {
+      // 🟢 1. ตัดสต็อกสินค้าในคอลเลกชัน 'products'
+      for (const item of cartItems) {
+        const prodId = item.productId || item.id;
+        if (prodId) {
+          const productRef = doc(db, 'products', prodId);
+          const productSnap = await getDoc(productRef);
 
-    // 2. แยกเคสตามวิธีการชำระเงิน
-    if (paymentMethod === 'transfer') {
-      // โอนเงินผ่านธนาคาร -> ส่งไปหน้าชำระเงิน (payment.tsx)
-      router.push({
-        pathname: '/payment',
-        params: { orderId: orderRef.id, amount: totalPrice.toString() },
+          if (productSnap.exists()) {
+            const pData = productSnap.data();
+            const currentStock = pData.stock !== undefined 
+              ? Number(pData.stock) 
+              : (pData.quantity !== undefined ? Number(pData.quantity) : 0);
+            
+            const purchasedQty = Number(item.quantity || 1);
+            const newStock = Math.max(0, currentStock - purchasedQty);
+
+            await updateDoc(productRef, {
+              stock: newStock,
+              quantity: newStock, // สำรองกรณีบางหน้าอ้างอิงฟิลด์ quantity
+            });
+          }
+        }
+      }
+
+      // 🟢 2. สร้าง Order ใน Firestore
+      const orderRef = await addDoc(collection(db, 'orders'), {
+        userId: currentUser.uid,
+        items: cartItems,
+        shippingAddress: { fullName, address, phone },
+        shippingMethod: shippingMethod === 'postal' ? 'ไปรษณีย์ไทย (3-5 วัน)' : 'ขนส่งเอกชน (1-2 วัน)',
+        paymentMethod: paymentMethod === 'transfer' ? 'โอนเงินผ่านธนาคาร' : 'เก็บเงินปลายทาง',
+        subtotalPrice,
+        shippingFee,
+        totalPrice,
+        status: paymentMethod === 'transfer' ? 'pending_payment' : 'paid',
+        createdAt: new Date().toISOString(),
       });
-    } else {
-      // เก็บเงินปลายทาง -> เคลียร์ตะกร้าสินค้า และแสดงป็อปอัปสั่งซื้อสำเร็จ
+
+      // 🟢 3. เคลียร์รายการสินค้าออกจากตะกร้า
       for (const item of cartItems) {
         await deleteDoc(doc(db, 'carts', item.id));
       }
-      setIsSuccessModalOpen(true);
+
+      // 🟢 4. แยกเคสตามวิธีการชำระเงิน
+      if (paymentMethod === 'transfer') {
+        // โอนเงินผ่านธนาคาร -> ส่งไปหน้าชำระเงิน (payment.tsx)
+        router.push({
+          pathname: '/payment',
+          params: { orderId: orderRef.id, amount: totalPrice.toString() },
+        });
+      } else {
+        // เก็บเงินปลายทาง -> แสดงป็อปอัปสั่งซื้อสำเร็จ
+        setIsSuccessModalOpen(true);
+      }
+    } catch (error) {
+      console.log('Error creating order:', error);
+    } finally {
+      setSubmitting(false);
     }
-  } catch (error) {
-    console.log('Error creating order:', error);
-  } finally {
-    setSubmitting(false);
-  }
-};
+  };
 
   if (loading) {
     return (
@@ -155,7 +182,7 @@ const handleConfirmOrder = async () => {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#faf9f5" />
 
-      {/* 🟢 Header */}
+      {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.7}>
           <Ionicons name="arrow-back" size={24} color="#1e293b" />
@@ -239,7 +266,7 @@ const handleConfirmOrder = async () => {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* 📝 Modal แก้ไขที่อยู่จัดส่ง (ปุ่มล็อกติดด้านล่างสุด ไม่โดนคีย์บอร์ดบัง) */}
+      {/* 📝 Modal แก้ไขที่อยู่จัดส่ง */}
       <Modal visible={isEditAddressOpen} transparent animationType="slide" onRequestClose={() => setIsEditAddressOpen(false)}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
@@ -278,7 +305,6 @@ const handleConfirmOrder = async () => {
                   />
                 </ScrollView>
 
-                {/* 📌 ปุ่มบันทึก & ยกเลิก อยู่นอก ScrollView ล็อกติดขอบล่างของ Modal เหนือคีย์บอร์ดตลอดเวลา */}
                 <View style={styles.modalBtnRow}>
                   <TouchableOpacity
                     style={styles.cancelBtn}
@@ -352,7 +378,7 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end', // ดัน Modal ขึ้นมาจากด้านล่าง
+    justifyContent: 'flex-end',
   },
   keyboardAvoidingContainer: {
     width: '100%',

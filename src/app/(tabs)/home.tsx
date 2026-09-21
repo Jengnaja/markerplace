@@ -43,16 +43,15 @@ export default function HomeScreen() {
   useEffect(() => {
     let isMounted = true;
 
-    // ตั้งเวลา 5 วินาที ถ้ายังไม่มีการยืนยันตัวตน ให้เด้งไปหน้า welcome
     const timeoutId = setTimeout(() => {
       if (isMounted && !auth.currentUser) {
-        router.replace('/welcome' as any); // เปลี่ยนเส้นทางไปหน้า welcome
+        router.replace('/welcome' as any);
       }
     }, 5000);
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (!user && isMounted) {
-        // หากตรวจพบทันทีว่าไม่อยู่ในระบบ สามารถจัดการได้ หรือปล่อยให้ครบ 5 วิ
+        // หากตรวจพบทันทีว่าไม่อยู่ในระบบ
       }
     });
 
@@ -288,27 +287,42 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View style={styles.productGrid}>
-            {filteredProducts.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.productCard}
-                activeOpacity={0.85}
-                onPress={() => router.push(`/product/${item.id}` as any)}
-              >
-                <Image source={{ uri: item.image }} style={styles.productImage} resizeMode="cover" />
-                <View style={styles.productInfo}>
-                  <Text style={styles.productName} numberOfLines={1}>
-                    {item.title || item.name}
-                  </Text>
-                  <View style={styles.productBottomRow}>
-                    <Text style={styles.productPrice}>฿ {item.price}</Text>
-                    <View style={styles.addToCartBtn}>
-                      <Ionicons name="cart-outline" size={16} color="#ffffff" />
+            {filteredProducts.map((item) => {
+              // 🟢 คำนวณจำนวนคงเหลือในสต็อก (เช็กฟิลด์ stock หรือ quantity)
+              const currentStock = item.stock !== undefined 
+                ? Number(item.stock) 
+                : (item.quantity !== undefined ? Number(item.quantity) : 0);
+
+              const isOutOfStock = currentStock <= 0;
+
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.productCard}
+                  activeOpacity={0.85}
+                  onPress={() => router.push(`/product/${item.id}` as any)}
+                >
+                  <Image source={{ uri: item.image }} style={styles.productImage} resizeMode="cover" />
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productName} numberOfLines={1}>
+                      {item.title || item.name}
+                    </Text>
+
+                    {/* 🟢 แสดงจำนวนสินค้าคงเหลือ */}
+                    <Text style={[styles.productStockText, isOutOfStock && styles.outOfStockText]}>
+                      {!isOutOfStock ? `เหลือ ${currentStock} ชิ้น` : 'สินค้าหมด'}
+                    </Text>
+
+                    <View style={styles.productBottomRow}>
+                      <Text style={styles.productPrice}>฿ {item.price}</Text>
+                      <View style={[styles.addToCartBtn, isOutOfStock && styles.disabledCartBtn]}>
+                        <Ionicons name="cart-outline" size={16} color="#ffffff" />
+                      </View>
                     </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
@@ -401,9 +415,12 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   productImage: { width: '100%', height: 130, backgroundColor: '#f1f5f9' },
-  productInfo: { padding: 10, gap: 6 },
+  productInfo: { padding: 10, gap: 4 },
   productName: { fontSize: 14, fontWeight: 'bold', color: '#0f172a' },
-  productBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  productStockText: { fontSize: 11, color: '#64748b', fontWeight: '500' }, // 🟢 Style สำหรับแสดงสต็อกคงเหลือ
+  outOfStockText: { color: '#ef4444', fontWeight: 'bold' }, // 🟢 Style กรณีสินค้าหมด
+  productBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
   productPrice: { fontSize: 15, fontWeight: 'bold', color: '#1a5d3a' },
   addToCartBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#1a5d3a', justifyContent: 'center', alignItems: 'center' },
+  disabledCartBtn: { backgroundColor: '#cbd5e1' },
 });

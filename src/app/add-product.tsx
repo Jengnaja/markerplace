@@ -37,6 +37,7 @@ export default function AddProductScreen() {
   // ฟอร์มสินค้า
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('');
+  const [stock, setStock] = useState('1'); // 🟢 State เพิ่มสำหรับเก็บจำนวนสินค้า
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('food');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -163,6 +164,10 @@ export default function AddProductScreen() {
       Alert.alert('ข้อมูลไม่ครบถ้วน', 'กรุณากรอกราคาสินค้าเป็นตัวเลข');
       return;
     }
+    if (!stock.trim() || isNaN(Number(stock)) || Number(stock) < 0) {
+      Alert.alert('ข้อมูลไม่ครบถ้วน', 'กรุณากรอกจำนวนสินค้าในสต็อกให้ถูกต้อง');
+      return;
+    }
     if (!imageUri) {
       Alert.alert('ข้อมูลไม่ครบถ้วน', 'กรุณาเลือกหรือถ่ายรูปภาพสินค้า');
       return;
@@ -186,6 +191,8 @@ export default function AddProductScreen() {
         title: title.trim(),
         name: title.trim(),
         price: Number(price),
+        stock: Number(stock), // 🟢 บันทึกสต็อกสินค้า
+        quantity: Number(stock), // สำรองกรณีบางหน้าเรียกใช้ quantity
         description: description.trim(),
         category,
         image: finalImageBase64,
@@ -271,16 +278,32 @@ export default function AddProductScreen() {
           onChangeText={setTitle}
         />
 
-        {/* ราคาสินค้า */}
-        <Text style={styles.inputLabel}>ราคา (บาท) *</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="เช่น 150"
-          placeholderTextColor="#94a3b8"
-          keyboardType="numeric"
-          value={price}
-          onChangeText={setPrice}
-        />
+        {/* ราคา & จำนวนสต็อก (แสดงคู่กันเป็น 2 คอลัมน์) */}
+        <View style={styles.rowInputs}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>ราคา (บาท) *</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="เช่น 150"
+              placeholderTextColor="#94a3b8"
+              keyboardType="numeric"
+              value={price}
+              onChangeText={setPrice}
+            />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inputLabel}>จำนวนสต็อก (ชิ้น) *</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="เช่น 10"
+              placeholderTextColor="#94a3b8"
+              keyboardType="numeric"
+              value={stock}
+              onChangeText={setStock}
+            />
+          </View>
+        </View>
 
         {/* หมวดหมู่สินค้า */}
         <Text style={styles.inputLabel}>หมวดหมู่สินค้า *</Text>
@@ -354,6 +377,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1a5d3a' },
   scrollContent: { padding: 20, gap: 12 },
   inputLabel: { fontSize: 14, fontWeight: 'bold', color: '#0f172a', marginTop: 4 },
+  rowInputs: { flexDirection: 'row', gap: 12 }, // จัดช่องราคาและสต็อกให้อยู่แถวเดียวกัน
   textInput: {
     backgroundColor: '#ffffff',
     borderWidth: 1,
@@ -363,6 +387,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     color: '#0f172a',
+    marginTop: 4,
   },
   textArea: {
     height: 90,

@@ -18,7 +18,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { doc, getDoc, collection, getDocs, query, updateDoc, deleteDoc } from 'firebase/firestore';
+// ✨ เพิ่ม where เข้ามาจาก firebase/firestore
+import { doc, getDoc, collection, getDocs, query, where, updateDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '../../../services/firebase';
 
 // 🟢 เปิดใช้งาน LayoutAnimation สำหรับ Android และ iOS
@@ -45,7 +46,7 @@ export default function CartScreen() {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [trackingNumber, setTrackingNumber] = useState('');
 
-  // 🟢 ดึงข้อมูล (แยกระหว่าง ผู้ซื้อ ดึง carts / ผู้ขาย ดึง orders ทั้งหมด)
+  // 🟢 ดึงข้อมูล (แยกระหว่าง ผู้ซื้อ ดึง carts / ผู้ขาย ดึง orders ของร้านตัวเอง)
   useFocusEffect(
     useCallback(() => {
       const fetchData = async () => {
@@ -65,20 +66,41 @@ export default function CartScreen() {
           }
 
           if (currentRole === 'seller') {
-            // 📦 ฝั่งผู้ขาย: ดึงออเดอร์ทั้งหมดของลูกค้า
-            try {
-              const querySnapshot = await getDocs(collection(db, 'orders'));
-              const orderList: any[] = [];
-              querySnapshot.forEach((docSnap) => {
-                orderList.push({ id: docSnap.id, ...docSnap.data() });
-              });
-              // เรียงออเดอร์ล่าสุดขึ้นก่อน
-              orderList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-              setSellerOrders(orderList);
-            } catch (error) {
-              console.log('Error fetching seller orders:', error);
-            }
-          } else {
+  // 📦 ฝั่งผู้ขาย: ดึงคำสั่งซื้อทั้งหมดแล้วกรองเฉพาะรายการที่เป็นของร้านเรา
+  try {
+    const querySnapshot = await getDocs(collection(db, 'orders'));
+    const orderList: any[] = [];
+
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+
+      // ตรวจสอบว่า sellerId ตรงกับเรา (เช็กทั้งระดับบน และเช็กในรายชื่อสินค้า items)
+      const isMyOrder =
+        data.sellerId === currentUser.uid ||
+        data.shopId === currentUser.uid ||
+        (Array.isArray(data.items) && data.items.some((item: any) => item.sellerId === currentUser.uid));
+
+      if (isMyOrder) {
+        // กรองเอาเฉพาะสินค้าที่เป็นของร้านเรามาแสดงผล
+        const myItems = Array.isArray(data.items)
+          ? data.items.filter((item: any) => !item.sellerId || item.sellerId === currentUser.uid)
+          : [];
+
+        orderList.push({
+          id: docSnap.id,
+          ...data,
+          items: myItems.length > 0 ? myItems : data.items,
+        });
+      }
+    });
+
+    // เรียงลำดับจากคำสั่งซื้อล่าสุดขึ้นก่อน
+    orderList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    setSellerOrders(orderList);
+  } catch (error) {
+    console.log('Error fetching seller orders:', error);
+  }
+} else {
             // 🛒 ฝั่งผู้ซื้อ: ดึงสินค้าในตะกร้า
             try {
               const cartQuery = query(collection(db, 'carts'));

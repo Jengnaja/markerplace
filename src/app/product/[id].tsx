@@ -33,13 +33,13 @@ export default function ProductDetailScreen() {
   const [rating, setRating] = useState<string>('5.0');
   const [reviewCount, setReviewCount] = useState<number>(0);
 
-  // Modal แจ้งเตือน (เพิ่ม state สำหรับเช็คว่าเป็นกรณีต้องไปหน้า welcome หรือไม่)
+  // Modal แจ้งเตือน
   const [alertConfig, setAlertConfig] = useState<{
     visible: boolean;
     type: 'success' | 'error' | 'warning';
     title: string;
     message: string;
-    actionType?: 'cart' | 'welcome';
+    actionType?: 'cart' | 'welcome' | 'close';
   }>({
     visible: false,
     type: 'success',
@@ -52,7 +52,7 @@ export default function ProductDetailScreen() {
     type: 'success' | 'error' | 'warning',
     title: string,
     message: string,
-    actionType: 'cart' | 'welcome' = 'cart'
+    actionType: 'cart' | 'welcome' | 'close' = 'cart'
   ) => {
     setAlertConfig({ visible: true, type, title, message, actionType });
   };
@@ -88,20 +88,41 @@ export default function ProductDetailScreen() {
     fetchProductDetail();
   }, [id]);
 
-  const increaseQuantity = () => setQuantity((prev) => prev + 1);
-  const decreaseQuantity = () => { if (quantity > 1) setQuantity((prev) => prev - 1); };
+  // 🟢 คำนวณจำนวนคงเหลือในสต็อก
+  const availableStock = product?.stock !== undefined 
+    ? Number(product.stock) 
+    : (product?.quantity !== undefined ? Number(product.quantity) : 0);
+
+  const isOutOfStock = availableStock <= 0;
+
+  // 🟢 ฟังก์ชันปรับจำนวนสินค้า (พร้อมเช็กไม่ให้เกินสต็อก)
+  const increaseQuantity = () => {
+    if (quantity < availableStock) {
+      setQuantity((prev) => prev + 1);
+    } else {
+      showAlert('warning', 'ข้อจำกัดสินค้า', `สินค้าในคลังมีเพียง ${availableStock} ชิ้นเท่านั้น`, 'close');
+    }
+  };
+
+  const decreaseQuantity = () => { 
+    if (quantity > 1) setQuantity((prev) => prev - 1); 
+  };
 
   // 🛒 บันทึกสินค้าลง Firestore ตะกร้า
   const handleAddToCart = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) {
-      // 🟢 หากยังไม่ล็อกอิน ให้แสดง Modal และตั้งค่า actionType เป็น 'welcome'
       showAlert(
         'warning',
         'เข้าสู่ระบบ',
         'กรุณาเข้าสู่ระบบก่อนเพิ่มสินค้าลงตะกร้า',
         'welcome'
       );
+      return;
+    }
+
+    if (isOutOfStock) {
+      showAlert('warning', 'สินค้าหมด', 'ขออภัย สินค้ารายการนี้หมดชั่วคราว', 'close');
       return;
     }
 
@@ -116,7 +137,15 @@ export default function ProductDetailScreen() {
 
       if (!cartSnap.empty) {
         const existingDoc = cartSnap.docs[0];
-        const newQty = existingDoc.data().quantity + quantity;
+        const currentInCart = existingDoc.data().quantity || 0;
+        const newQty = currentInCart + quantity;
+
+        if (newQty > availableStock) {
+          showAlert('warning', 'สินค้าเกินสต็อก', `คุณมีสินค้านี้ในตะกร้าแล้ว ${currentInCart} ชิ้น ไม่สามารถเพิ่มเกินจำนวนคงเหลือ (${availableStock} ชิ้น) ได้`, 'close');
+          setAddingToCart(false);
+          return;
+        }
+
         await updateDoc(doc(db, 'carts', existingDoc.id), {
           quantity: newQty,
           updatedAt: new Date().toISOString(),
@@ -182,16 +211,19 @@ export default function ProductDetailScreen() {
               style={styles.alertButton}
               onPress={() => {
                 setAlertConfig({ ...alertConfig, visible: false });
-                // 🟢 ตรวจสอบเงื่อนไขการนำทางปุ่มใน Modal
                 if (alertConfig.actionType === 'welcome') {
                   router.push('/welcome' as any);
-                } else if (alertConfig.type === 'success') {
+                } else if (alertConfig.actionType === 'cart') {
                   router.push('/(tabs)/cart');
                 }
               }}
             >
               <Text style={styles.alertButtonText}>
-                {alertConfig.actionType === 'welcome' ? 'เข้าสู่ระบบ / สมัครสมาชิก' : 'ดูตะกร้าสินค้า'}
+                {alertConfig.actionType === 'welcome' 
+                  ? 'เข้าสู่ระบบ / สมัครสมาชิก' 
+                  : alertConfig.actionType === 'cart' 
+                  ? 'ดูตะกร้าสินค้า' 
+                  : 'ตกลง'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -213,7 +245,14 @@ export default function ProductDetailScreen() {
           <Text style={styles.productTitle}>{product.title}</Text>
 
           <View style={styles.priceRatingRow}>
-            <Text style={styles.productPrice}>฿ {product.price}</Text>
+            <View>
+              <Text style={styles.productPrice}>฿ {product.price}</Text>
+              {/* 🟢 แสดงจำนวนสินค้าในสต็อกใต้ราคา */}
+              <Text style={[styles.stockStatusText, isOutOfStock && styles.outOfStockStatusText]}>
+                {!isOutOfStock ? `คลัง: ${availableStock} ชิ้น` : '❌ สินค้าหมดชั่วคราว'}
+              </Text>
+            </View>
+
             <View style={styles.ratingBadge}>
               <Ionicons name="star" size={16} color="#eab308" />
               <Text style={styles.ratingText}>{rating}</Text>
@@ -238,30 +277,50 @@ export default function ProductDetailScreen() {
             {product.description || 'สินค้าคุณภาพจากชุมชน ผลิตด้วยภูมิปัญญาท้องถิ่น'}
           </Text>
 
+          {/* 🟢 ส่วนปรับจำนวนสินค้า */}
           <View style={styles.quantitySection}>
-            <Text style={styles.quantityLabel}>จำนวน</Text>
+            <View>
+              <Text style={styles.quantityLabel}>จำนวน</Text>
+              <Text style={styles.stockHintText}>(มีสินค้าคงเหลือ {availableStock} ชิ้น)</Text>
+            </View>
             <View style={styles.quantityControlPill}>
-              <TouchableOpacity style={styles.qtyBtn} onPress={decreaseQuantity}>
-                <Ionicons name="remove" size={18} color="#334155" />
+              <TouchableOpacity 
+                style={[styles.qtyBtn, (quantity <= 1 || isOutOfStock) && styles.disabledQtyBtn]} 
+                onPress={decreaseQuantity}
+                disabled={quantity <= 1 || isOutOfStock}
+              >
+                <Ionicons name="remove" size={18} color={quantity <= 1 || isOutOfStock ? '#cbd5e1' : '#334155'} />
               </TouchableOpacity>
-              <Text style={styles.qtyNumberText}>{quantity}</Text>
-              <TouchableOpacity style={styles.qtyBtn} onPress={increaseQuantity}>
-                <Ionicons name="add" size={18} color="#1a5d3a" />
+
+              <Text style={styles.qtyNumberText}>{isOutOfStock ? 0 : quantity}</Text>
+
+              <TouchableOpacity 
+                style={[styles.qtyBtn, (quantity >= availableStock || isOutOfStock) && styles.disabledQtyBtn]} 
+                onPress={increaseQuantity}
+                disabled={quantity >= availableStock || isOutOfStock}
+              >
+                <Ionicons name="add" size={18} color={quantity >= availableStock || isOutOfStock ? '#cbd5e1' : '#1a5d3a'} />
               </TouchableOpacity>
             </View>
           </View>
 
+          {/* 🟢 ปุ่มเพิ่มลงตะกร้า */}
           <TouchableOpacity
-            style={[styles.addToCartButton, addingToCart && { backgroundColor: '#8cb89f' }]}
+            style={[
+              styles.addToCartButton, 
+              (addingToCart || isOutOfStock) && { backgroundColor: '#cbd5e1' }
+            ]}
             onPress={handleAddToCart}
-            disabled={addingToCart}
+            disabled={addingToCart || isOutOfStock}
           >
             {addingToCart ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
               <>
                 <Ionicons name="cart-outline" size={22} color="#ffffff" />
-                <Text style={styles.addToCartButtonText}>เพิ่มลงตะกร้า</Text>
+                <Text style={styles.addToCartButtonText}>
+                  {isOutOfStock ? 'สินค้าหมด' : 'เพิ่มลงตะกร้า'}
+                </Text>
               </>
             )}
           </TouchableOpacity>
@@ -281,9 +340,11 @@ const styles = StyleSheet.create({
   floatingHeartButton: { position: 'absolute', top: 14, right: 14, width: 38, height: 38, borderRadius: 19, backgroundColor: '#ffffff', justifyContent: 'center', alignItems: 'center', elevation: 3 },
   detailsContainer: { paddingHorizontal: 20, paddingTop: 18, gap: 16 },
   productTitle: { fontSize: 22, fontWeight: 'bold', color: '#0f172a' },
-  priceRatingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  priceRatingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   productPrice: { fontSize: 24, fontWeight: 'bold', color: '#1a5d3a' },
-  ratingBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  stockStatusText: { fontSize: 13, color: '#64748b', fontWeight: '600', marginTop: 2 },
+  outOfStockStatusText: { color: '#ef4444', fontWeight: 'bold' },
+  ratingBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   ratingText: { fontSize: 15, fontWeight: 'bold', color: '#eab308' },
   reviewCountText: { fontSize: 14, color: '#94a3b8' },
   sellerCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -293,8 +354,10 @@ const styles = StyleSheet.create({
   descriptionText: { fontSize: 14, color: '#475569', lineHeight: 22 },
   quantitySection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   quantityLabel: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },
+  stockHintText: { fontSize: 12, color: '#64748b', marginTop: 2 },
   quantityControlPill: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 25, paddingHorizontal: 6, paddingVertical: 4, backgroundColor: '#f8fafc', gap: 16 },
   qtyBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#ffffff', justifyContent: 'center', alignItems: 'center', elevation: 1 },
+  disabledQtyBtn: { backgroundColor: '#f1f5f9', elevation: 0 },
   qtyNumberText: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' },
   addToCartButton: { flexDirection: 'row', backgroundColor: '#1a5d3a', height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 12 },
   addToCartButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },

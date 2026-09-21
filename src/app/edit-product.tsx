@@ -33,6 +33,7 @@ export default function EditProductScreen() {
 
   const [title, setTitle] = useState('');
   const [price, setPrice] = useState('');
+  const [stock, setStock] = useState('1'); // 🟢 State เพิ่มสำหรับเก็บจำนวนสินค้า
   const [description, setDescription] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('processed');
   const [productImage, setProductImage] = useState<string | null>(null);
@@ -70,6 +71,13 @@ export default function EditProductScreen() {
           const data = docSnap.data();
           setTitle(data.title || '');
           setPrice(data.price ? data.price.toString() : '');
+          
+          // 🟢 ดึงข้อมูลสต็อกสินค้า (เช็กทั้ง stock และ quantity)
+          const currentStock = data.stock !== undefined 
+            ? data.stock.toString() 
+            : (data.quantity !== undefined ? data.quantity.toString() : '1');
+          setStock(currentStock);
+
           setDescription(data.description || '');
           setSelectedCategory(data.category || 'processed');
           setProductImage(data.image || null);
@@ -108,8 +116,13 @@ export default function EditProductScreen() {
 
   // 💾 บันทึกการแก้ไขลง Firestore
   const handleUpdateProduct = async () => {
-    if (!title.trim() || !price.trim() || !productImage) {
-      showAlert('warning', 'ข้อมูลไม่ครบถ้วน', 'กรุณากรอกชื่อสินค้า ราคา และเลือกรูปภาพสินค้า');
+    if (!title.trim() || !price.trim() || !stock.trim() || !productImage) {
+      showAlert('warning', 'ข้อมูลไม่ครบถ้วน', 'กรุณากรอกชื่อสินค้า ราคา จำนวนสินค้า และเลือกรูปภาพสินค้า');
+      return;
+    }
+
+    if (isNaN(Number(stock)) || Number(stock) < 0) {
+      showAlert('warning', 'ข้อมูลไม่ถูกต้อง', 'กรุณากรอกจำนวนสินค้าในสต็อกให้ถูกต้อง');
       return;
     }
 
@@ -118,7 +131,7 @@ export default function EditProductScreen() {
     try {
       let finalProductImage = productImage;
 
-      // ถ้ามีการเปลี่ยนรูปใหม่ (เป็น file://) ให้แปลงเป็น Base64 ถาวร
+      // ถ้ามีการเปลี่ยนรูปใหม่ (เป็น file://) ให้แปลงเป็น Base64
       if (productImage.startsWith('file://')) {
         finalProductImage = await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -141,7 +154,10 @@ export default function EditProductScreen() {
       const docRef = doc(db, 'products', id as string);
       await updateDoc(docRef, {
         title: title.trim(),
+        name: title.trim(),
         price: parseFloat(price) || 0,
+        stock: Number(stock), // 🟢 อัปเดตจำนวนสต็อก
+        quantity: Number(stock), // สำรองกรณีใช้ชื่อฟิลด์ quantity
         category: selectedCategory,
         description: description.trim(),
         image: finalProductImage,
@@ -221,16 +237,29 @@ export default function EditProductScreen() {
               />
             </View>
 
-            {/* ราคา */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>ราคา (บาท)</Text>
-              <TextInput
-                style={styles.textInput}
-                value={price}
-                onChangeText={setPrice}
-                keyboardType="numeric"
-                placeholder="0.00"
-              />
+            {/* ราคา & จำนวนสต็อก (แสดงคู่กันเป็น 2 คอลัมน์) */}
+            <View style={styles.rowInputs}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>ราคา (บาท)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={price}
+                  onChangeText={setPrice}
+                  keyboardType="numeric"
+                  placeholder="0.00"
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>จำนวนสต็อก (ชิ้น)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={stock}
+                  onChangeText={setStock}
+                  keyboardType="numeric"
+                  placeholder="0"
+                />
+              </View>
             </View>
 
             {/* ประเภทสินค้า */}
@@ -301,6 +330,7 @@ const styles = StyleSheet.create({
   placeholderText: { fontSize: 14, fontWeight: 'bold', color: '#1a5d3a' },
   formContainer: { gap: 16 },
   inputGroup: { gap: 6 },
+  rowInputs: { flexDirection: 'row', gap: 12 }, // จัดช่องราคาและสต็อกให้อยู่แถวเดียวกัน
   inputLabel: { fontSize: 14, fontWeight: '600', color: '#333333' },
   textInput: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingHorizontal: 14, height: 50, backgroundColor: '#f8fafc', fontSize: 15, color: '#1e293b' },
   categoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },

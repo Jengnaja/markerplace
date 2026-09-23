@@ -1,50 +1,93 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Platform } from 'react-native';
-import { Tabs, useFocusEffect } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import * as Notifications from 'expo-notifications';
+import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../../services/firebase';
+import { registerForPushNotificationsAsync } from '../../../services/notification';
 
 export default function TabLayout() {
+  const router = useRouter();
   const [userRole, setUserRole] = useState<'buyer' | 'seller'>('buyer');
   const [cartCount, setCartCount] = useState<number>(0);
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
 
-  // 🟢 ดึง Role และนับจำนวนสินค้าทั้งหมดในตะกร้าแบบ Real-time เมื่อสลับหน้า
-  useFocusEffect(
-    useCallback(() => {
-      const fetchData = async () => {
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          try {
-            // ดึง Role ผู้ใช้
-            const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-            if (userDoc.exists() && userDoc.data().role) {
-              setUserRole(userDoc.data().role);
-            }
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
 
-            // คำนวณผลรวมจำนวนชิ้นสินค้าทั้งหมดในตะกร้า
-            const cartQuery = query(collection(db, 'carts'), where('userId', '==', currentUser.uid));
-            const cartSnap = await getDocs(cartQuery);
-            
-            const totalQuantity = cartSnap.docs.reduce((sum, docSnap) => {
-              const data = docSnap.data();
-              return sum + (data.quantity || 1);
-            }, 0);
+    // 🟢 1. ลงทะเบียนขอสิทธิ์ Push Notification และรับ Token
+    registerForPushNotificationsAsync();
 
-            setCartCount(totalQuantity);
-          } catch (error) {
-            console.log('Error fetching layout data:', error);
-          }
+    // 🟢 2. ดักจับเมื่อผู้ใช้กดป๊อปอัพแจ้งเตือนบนหน้าจอมือถือ -> นำทางไปหน้าห้องแชททันที
+    // 🟢 ดักจับเมื่อผู้ใช้กดป๊อปอัพแจ้งเตือน
+const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
+  // ✅ แปลงและระบุ Type เป็น string ชัดเจน
+  const chatId = response.notification.request.content.data?.chatId as string;
+  
+  if (chatId) {
+    router.push({
+      pathname: '/chat/room' as any,
+      params: { chatId: String(chatId) },
+    });
+  }
+});
+
+    // 3. ดึงข้อมูล User Role
+    const fetchUserRole = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        if (userDoc.exists() && userDoc.data().role) {
+          setUserRole(userDoc.data().role);
         }
-      };
+      } catch (error) {
+        console.log('Error fetching user role:', error);
+      }
+    };
+    fetchUserRole();
 
-      fetchData();
-    }, [])
-  );
+    // 4. ดึงจำนวนสินค้าในตะกร้าแบบ Real-time
+    const cartQuery = query(
+      collection(db, 'carts'),
+      where('userId', '==', currentUser.uid)
+    );
+    const unsubCart = onSnapshot(cartQuery, (snapshot) => {
+      const totalQuantity = snapshot.docs.reduce((sum, docSnap) => {
+        const data = docSnap.data();
+        return sum + (data.quantity || 1);
+      }, 0);
+      setCartCount(totalQuantity);
+    });
+
+    // 5. ดึงจำนวนแชทที่ยังไม่ได้อ่านแบบ Real-time
+    const chatsQuery = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', currentUser.uid)
+    );
+    const unsubChats = onSnapshot(chatsQuery, (snapshot) => {
+      let unread = 0;
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.lastSenderId && data.lastSenderId !== currentUser.uid && data.isRead === false) {
+          unread += 1;
+        } else if (data.unreadCount && data.unreadCount > 0) {
+          unread += data.unreadCount;
+        }
+      });
+      setUnreadChatCount(unread);
+    });
+
+    return () => {
+      unsubCart();
+      unsubChats();
+      responseListener.remove(); // เคลียร์ Listener เมื่อออกจากหน้า
+    };
+  }, []);
 
   return (
     <Tabs
-      initialRouteName="home" // 👈 กำหนดหน้า Home เป็นหน้าเริ่มต้นเสมอ
+      initialRouteName="home"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: '#1a5d3a',
@@ -91,7 +134,29 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 3. 🛒 ตะกร้าสินค้า / คำสั่งซื้อ */}
+      {/* 3. 💬 แชท (มีตัวเลขแจ้งเตือนป้ายสีแดงเมื่อมีแชทใหม่) */}
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'แชท',
+          tabBarBadge: unreadChatCount > 0 ? unreadChatCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#ef4444',
+            color: '#ffffff',
+            fontSize: 11,
+            fontWeight: 'bold',
+          },
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'chatbubbles' : 'chatbubbles-outline'}
+              size={23}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      {/* 4. 🛒 ตะกร้าสินค้า / คำสั่งซื้อ */}
       <Tabs.Screen
         name="cart"
         options={{
@@ -121,7 +186,7 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 4. 👤 โปรไฟล์ */}
+      {/* 5. 👤 โปรไฟล์ */}
       <Tabs.Screen
         name="profile"
         options={{

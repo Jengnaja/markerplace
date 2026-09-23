@@ -193,7 +193,7 @@ export default function HomeScreen() {
           <View>
             <Text style={styles.welcomeSubtext}>ยินดีต้อนรับสู่</Text>
             <Text style={styles.appName}>
-              {isSeller ? 'ร้านค้าของคุณ 🏪' : 'ตลาดชุมชนนนทบุรี'}
+              {isSeller ? 'ร้านค้าของคุณ 🏪' : 'วิสาหกิจชุมชนนนทบุรี'}
             </Text>
           </View>
         </View>

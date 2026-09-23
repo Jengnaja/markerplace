@@ -14,7 +14,17 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc, collection, getDocs, query, where, addDoc, updateDoc } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+  addDoc,
+  updateDoc,
+} from 'firebase/firestore';
 import { auth, db } from '../../../services/firebase';
 
 const { width } = Dimensions.get('window');
@@ -88,14 +98,14 @@ export default function ProductDetailScreen() {
     fetchProductDetail();
   }, [id]);
 
-  // 🟢 คำนวณจำนวนคงเหลือในสต็อก
+  // คำนวณจำนวนคงเหลือในสต็อก
   const availableStock = product?.stock !== undefined 
     ? Number(product.stock) 
     : (product?.quantity !== undefined ? Number(product.quantity) : 0);
 
   const isOutOfStock = availableStock <= 0;
 
-  // 🟢 ฟังก์ชันปรับจำนวนสินค้า (พร้อมเช็กไม่ให้เกินสต็อก)
+  // ฟังก์ชันปรับจำนวนสินค้า
   const increaseQuantity = () => {
     if (quantity < availableStock) {
       setQuantity((prev) => prev + 1);
@@ -108,6 +118,69 @@ export default function ProductDetailScreen() {
     if (quantity > 1) setQuantity((prev) => prev - 1); 
   };
 
+  // 💬 ฟังก์ชันจัดการเมื่อกดปุ่มแชท
+const handleChatWithSeller = async () => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    showAlert('warning', 'เข้าสู่ระบบ', 'กรุณาเข้าสู่ระบบก่อนเริ่มแชทกับร้านค้า', 'welcome');
+    return;
+  }
+
+  const sellerId = product?.sellerId;
+  if (!sellerId) {
+    showAlert('warning', 'ข้อผิดพลาด', 'ไม่พบข้อมูลร้านค้า', 'close');
+    return;
+  }
+
+  if (currentUser.uid === sellerId) {
+    showAlert('warning', 'ข้อแจ้งเตือน', 'คุณไม่สามารถแชทกับร้านค้าของตัวเองได้', 'close');
+    return;
+  }
+
+  try {
+    // ดึงข้อมูลโปรไฟล์ของลูกค้าปัจจุบัน
+    const buyerDoc = await getDoc(doc(db, 'users', currentUser.uid));
+    const buyerData = buyerDoc.exists() ? buyerDoc.data() : null;
+
+    const chatId = `${currentUser.uid}_${sellerId}`;
+    const chatRef = doc(db, 'chats', chatId);
+
+    // บันทึก/อัปเดตข้อมูลห้องแชทพร้อมรูปโปรไฟล์ทั้งสองฝั่ง
+    await setDoc(
+      chatRef,
+      {
+        chatId: chatId,
+        participants: [currentUser.uid, sellerId],
+        buyerId: currentUser.uid,
+        sellerId: sellerId,
+        sellerName: seller?.fullName || 'ร้านค้าชุมชน',
+        sellerImage: seller?.profileImage || seller?.avatar || '',
+        buyerName: buyerData?.fullName || currentUser.displayName || 'ลูกค้า',
+        buyerImage: buyerData?.profileImage || currentUser.photoURL || '',
+        lastMessage: 'เริ่มการสนทนา',
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+
+    router.push({
+      pathname: '/chat/room' as any,
+      params: {
+        chatId: chatId,
+        sellerName: seller?.fullName || 'ร้านค้าชุมชน',
+        sellerImage: seller?.profileImage || '',
+        buyerImage: buyerData?.profileImage || '',
+        productId: product?.id,
+        productTitle: product?.title,
+        productPrice: product?.price,
+        productImage: product?.image,
+      },
+    });
+  } catch (error) {
+    console.log('Error opening chat room:', error);
+    showAlert('error', 'ข้อผิดพลาด', 'ไม่สามารถเปิดห้องแชทได้', 'close');
+  }
+};
   // 🛒 บันทึกสินค้าลง Firestore ตะกร้า
   const handleAddToCart = async () => {
     const currentUser = auth.currentUser;
@@ -247,7 +320,6 @@ export default function ProductDetailScreen() {
           <View style={styles.priceRatingRow}>
             <View>
               <Text style={styles.productPrice}>฿ {product.price}</Text>
-              {/* 🟢 แสดงจำนวนสินค้าในสต็อกใต้ราคา */}
               <Text style={[styles.stockStatusText, isOutOfStock && styles.outOfStockStatusText]}>
                 {!isOutOfStock ? `คลัง: ${availableStock} ชิ้น` : '❌ สินค้าหมดชั่วคราว'}
               </Text>
@@ -260,6 +332,7 @@ export default function ProductDetailScreen() {
             </View>
           </View>
 
+          {/* การ์ดข้อมูลร้านค้า พร้อมปุ่มแชท */}
           <View style={styles.sellerCard}>
             <View style={styles.sellerAvatarBox}>
               {seller?.profileImage ? (
@@ -268,16 +341,24 @@ export default function ProductDetailScreen() {
                 <Ionicons name="person" size={22} color="#1a5d3a" />
               )}
             </View>
-            <Text style={styles.sellerName} numberOfLines={2}>
-              {seller?.fullName || 'กลุ่มวิสาหกิจชุมชนนนทบุรี'}
-            </Text>
+            <View style={styles.sellerInfoText}>
+              <Text style={styles.sellerName} numberOfLines={1}>
+                {seller?.fullName || 'กลุ่มวิสาหกิจชุมชนนนทบุรี'}
+              </Text>
+              <Text style={styles.sellerSubText}>ตอบกลับอย่างรวดเร็ว</Text>
+            </View>
+
+            <TouchableOpacity style={styles.chatSellerBtn} onPress={handleChatWithSeller}>
+              <Ionicons name="chatbubble-ellipses-outline" size={16} color="#1a5d3a" />
+              <Text style={styles.chatSellerBtnText}>แชทเลย</Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.descriptionText}>
             {product.description || 'สินค้าคุณภาพจากชุมชน ผลิตด้วยภูมิปัญญาท้องถิ่น'}
           </Text>
 
-          {/* 🟢 ส่วนปรับจำนวนสินค้า */}
+          {/* ส่วนปรับจำนวนสินค้า */}
           <View style={styles.quantitySection}>
             <View>
               <Text style={styles.quantityLabel}>จำนวน</Text>
@@ -304,26 +385,38 @@ export default function ProductDetailScreen() {
             </View>
           </View>
 
-          {/* 🟢 ปุ่มเพิ่มลงตะกร้า */}
-          <TouchableOpacity
-            style={[
-              styles.addToCartButton, 
-              (addingToCart || isOutOfStock) && { backgroundColor: '#cbd5e1' }
-            ]}
-            onPress={handleAddToCart}
-            disabled={addingToCart || isOutOfStock}
-          >
-            {addingToCart ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <>
-                <Ionicons name="cart-outline" size={22} color="#ffffff" />
-                <Text style={styles.addToCartButtonText}>
-                  {isOutOfStock ? 'สินค้าหมด' : 'เพิ่มลงตะกร้า'}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {/* แถบปุ่มด้านล่างแบบ Shopee (ปุ่มแชท + ปุ่มเพิ่มลงตะกร้า) */}
+          <View style={styles.bottomActionRow}>
+            <TouchableOpacity 
+              style={styles.chatBottomBtn} 
+              onPress={handleChatWithSeller}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={20} color="#1a5d3a" />
+              <Text style={styles.chatBottomBtnText}>แชท</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.addToCartButton, 
+                (addingToCart || isOutOfStock) && { backgroundColor: '#cbd5e1' }
+              ]}
+              onPress={handleAddToCart}
+              disabled={addingToCart || isOutOfStock}
+              activeOpacity={0.8}
+            >
+              {addingToCart ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <>
+                  <Ionicons name="cart-outline" size={22} color="#ffffff" />
+                  <Text style={styles.addToCartButtonText}>
+                    {isOutOfStock ? 'สินค้าหมด' : 'เพิ่มลงตะกร้า'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -347,10 +440,17 @@ const styles = StyleSheet.create({
   ratingBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   ratingText: { fontSize: 15, fontWeight: 'bold', color: '#eab308' },
   reviewCountText: { fontSize: 14, color: '#94a3b8' },
-  sellerCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  sellerAvatarBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#e8f5e9', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  
+  // Styles ร้านค้า
+  sellerCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#f1f5f9' },
+  sellerAvatarBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#e8f5e9', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', marginRight: 10 },
   sellerAvatarImage: { width: '100%', height: '100%' },
-  sellerName: { flex: 1, fontSize: 15, fontWeight: 'bold', color: '#1a5d3a' },
+  sellerInfoText: { flex: 1, marginRight: 8 },
+  sellerName: { fontSize: 15, fontWeight: 'bold', color: '#1a5d3a' },
+  sellerSubText: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  chatSellerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#1a5d3a', backgroundColor: '#f0fdf4' },
+  chatSellerBtnText: { fontSize: 13, fontWeight: 'bold', color: '#1a5d3a' },
+
   descriptionText: { fontSize: 14, color: '#475569', lineHeight: 22 },
   quantitySection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   quantityLabel: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },
@@ -359,8 +459,14 @@ const styles = StyleSheet.create({
   qtyBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#ffffff', justifyContent: 'center', alignItems: 'center', elevation: 1 },
   disabledQtyBtn: { backgroundColor: '#f1f5f9', elevation: 0 },
   qtyNumberText: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' },
-  addToCartButton: { flexDirection: 'row', backgroundColor: '#1a5d3a', height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 12 },
+
+  // Styles แถบปุ่มด้านล่าง (Shopee Style)
+  bottomActionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 12 },
+  chatBottomBtn: { width: 64, height: 52, borderRadius: 26, borderWidth: 1.5, borderColor: '#1a5d3a', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0fdf4' },
+  chatBottomBtnText: { fontSize: 11, fontWeight: 'bold', color: '#1a5d3a', marginTop: 1 },
+  addToCartButton: { flex: 1, flexDirection: 'row', backgroundColor: '#1a5d3a', height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', gap: 8 },
   addToCartButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+
   alertOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   alertBox: { width: '80%', backgroundColor: '#ffffff', borderRadius: 20, padding: 20, alignItems: 'center', gap: 12 },
   alertTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },

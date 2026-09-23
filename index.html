@@ -1,15 +1,25 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
+  
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Admin Dashboard - ระบบจัดการตลาดชุมชน</title>
+  <!-- Google Fonts: Prompt & Inter -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- FontAwesome 6 Pro Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   
+  <!-- ✨ SweetAlert2 CSS & JS -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
   <style>
+    /* 🟢 บังคับให้ SweetAlert2 เด้งอยู่ชั้นบนสุดเสมอ ไม่ถูกหน้าไหนบัง */
+    .swal2-container {
+      z-index: 100000 !important;
+    }
+
     :root {
       --bg-body: #f7f7fa; 
       --sidebar-bg: transparent;
@@ -36,7 +46,7 @@
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Prompt', 'Inter', sans-serif; }
     body { background-color: var(--bg-body); color: var(--text-main); display: flex; min-height: 100vh; overflow-x: hidden; }
     
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 20px; }
     ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
@@ -51,50 +61,60 @@
     }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-    /* 🔐 Login Page */
+    /* 🔐 Login Page - ปรับ z-index ให้เหมาะสม */
     #loginContainer {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: var(--bg-body);
       display: flex; justify-content: center; align-items: center;
-      z-index: 99999;
+      z-index: 1000;
       animation: fadeIn 0.4s ease;
+      padding: 16px;
     }
     .login-card {
-      background: #fff; padding: 50px 40px; border-radius: var(--radius-xl);
+      background: #fff; padding: 40px 30px; border-radius: var(--radius-xl);
       width: 100%; max-width: 400px; box-shadow: var(--shadow-soft);
       border: 1.5px solid var(--border-light);
-      display: flex; flex-direction: column; gap: 24px; text-align: center;
+      display: flex; flex-direction: column; gap: 20px; text-align: center;
     }
-    .login-logo {
-      width: 64px; height: 64px; border-radius: var(--radius-lg); margin: 0 auto;
-      background: var(--btn-black); color: #fff; font-size: 28px;
-      display: flex; align-items: center; justify-content: center;
+    .login-logo-img {
+      width: 80px; height: 80px; object-fit: contain; margin: 0 auto; display: block; border-radius: 16px;
     }
     .login-title { font-size: 24px; font-weight: 700; color: var(--text-main); }
-    .login-sub { font-size: 14px; color: var(--text-sub); margin-top: -16px; }
+    .login-sub { font-size: 14px; color: var(--text-sub); margin-top: -12px; }
     .login-input {
-      width: 100%; padding: 16px 20px; border-radius: var(--radius-lg);
+      width: 100%; padding: 14px 18px; border-radius: var(--radius-lg);
       background: #f9fafb; border: 1.5px solid var(--border-light);
       color: var(--text-main); font-size: 15px; outline: none; transition: all 0.3s;
     }
     .login-input:focus { border-color: var(--primary); background: #fff; }
     .login-btn {
-      width: 100%; padding: 16px; border-radius: var(--radius-pill); border: none;
+      width: 100%; padding: 14px; border-radius: var(--radius-pill); border: none;
       background: var(--btn-black); color: #ffffff; font-size: 15px; font-weight: 600;
-      cursor: pointer; transition: all 0.3s; margin-top: 10px;
+      cursor: pointer; transition: all 0.3s; margin-top: 6px;
     }
     .login-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
 
     #appContainer { display: none; width: 100%; padding: 12px; }
 
+    /* 📌 Sidebar Overlay for Mobile */
+    .sidebar-overlay {
+      display: none;
+      position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(15, 23, 42, 0.4);
+      backdrop-filter: blur(4px);
+      z-index: 998;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .sidebar-overlay.show { display: block; opacity: 1; }
+
     /* 📌 Sidebar */
     aside {
       width: 260px; background: transparent; color: var(--text-main);
       display: flex; flex-direction: column; position: fixed; top: 12px; bottom: 12px; left: 12px;
-      padding: 20px 15px; z-index: 100;
+      padding: 20px 15px; z-index: 999; transition: left 0.3s ease;
     }
     .brand { display: flex; align-items: center; gap: 12px; padding: 0 15px 40px; }
-    .brand-logo { font-size: 24px; color: var(--btn-black); }
     .brand-title { font-size: 20px; font-weight: 700; color: var(--text-main); letter-spacing: -0.5px; }
 
     .menu-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
@@ -108,36 +128,37 @@
     .menu-item.active button { background: #ffffff; color: var(--text-main); font-weight: 600; box-shadow: var(--shadow-soft); border: 1.5px solid var(--border-light); }
 
     /* 📌 Main Content */
-    .main-content { margin-left: 260px; flex: 1; display: flex; flex-direction: column; background: var(--bg-body); border-radius: 32px; min-height: calc(100vh - 24px); }
+    .main-content { margin-left: 260px; flex: 1; display: flex; flex-direction: column; background: var(--bg-body); border-radius: 32px; min-height: calc(100vh - 24px); width: calc(100% - 260px); }
     
-    header { display: flex; align-items: center; justify-content: space-between; padding: 30px 40px 10px; }
+    header { display: flex; align-items: center; justify-content: space-between; padding: 24px 32px 10px; gap: 16px; }
+    .mobile-toggle { display: none; }
     .search-box {
-      display: flex; align-items: center; gap: 12px; background: #ffffff; padding: 12px 24px; border-radius: var(--radius-pill);
+      display: flex; align-items: center; gap: 12px; background: #ffffff; padding: 12px 20px; border-radius: var(--radius-pill);
       width: 320px; border: 1.5px solid var(--border-light); box-shadow: var(--shadow-soft); transition: all 0.3s;
     }
     .search-box:focus-within { width: 360px; border-color: var(--primary); }
     .search-box input { border: none; background: transparent; outline: none; font-size: 14px; width: 100%; color: var(--text-main); }
     
-    .admin-profile { display: flex; align-items: center; gap: 16px; }
-    .action-icons { display: flex; gap: 12px; margin-right: 10px; }
-    .icon-btn { width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 1.5px solid var(--border-light); box-shadow: var(--shadow-soft); color: var(--text-sub); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: 0.3s; }
+    .admin-profile { display: flex; align-items: center; gap: 12px; }
+    .action-icons { display: flex; gap: 10px; }
+    .icon-btn { width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 1.5px solid var(--border-light); box-shadow: var(--shadow-soft); color: var(--text-sub); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: 0.3s; flex-shrink: 0; }
     .icon-btn:hover { color: var(--text-main); border-color: var(--primary); transform: translateY(-2px); }
     
-    .profile-info { display: flex; align-items: center; gap: 12px; background: #fff; padding: 6px 16px 6px 6px; border-radius: var(--radius-pill); box-shadow: var(--shadow-soft); cursor: pointer; border: 1.5px solid var(--border-light); transition: 0.3s;}
+    .profile-info { display: flex; align-items: center; gap: 10px; background: #fff; padding: 6px 14px 6px 6px; border-radius: var(--radius-pill); box-shadow: var(--shadow-soft); cursor: pointer; border: 1.5px solid var(--border-light); transition: 0.3s;}
     .profile-info:hover { border-color: var(--primary); }
-    .admin-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; overflow: hidden; }
-    .profile-text { font-size: 13.5px; font-weight: 600; color: var(--text-main); }
+    .admin-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--primary-gradient); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; overflow: hidden; flex-shrink: 0; }
+    .profile-text { font-size: 13.5px; font-weight: 600; color: var(--text-main); white-space: nowrap; }
 
-    .container { padding: 20px 40px 50px; display: flex; flex-direction: column; gap: 24px; position: relative; }
+    .container { padding: 20px 32px 40px; display: flex; flex-direction: column; gap: 24px; position: relative; }
     
-    .page-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .greeting-title { font-size: 32px; font-weight: 600; color: var(--text-main); letter-spacing: -0.5px; }
+    .page-header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .greeting-title { font-size: 28px; font-weight: 600; color: var(--text-main); letter-spacing: -0.5px; }
     
-    .btn-black { background: var(--btn-black); color: #fff; border: none; padding: 12px 24px; border-radius: var(--radius-pill); font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.3s; box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+    .btn-black { background: var(--btn-black); color: #fff; border: none; padding: 10px 20px; border-radius: var(--radius-pill); font-size: 13.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.3s; box-shadow: 0 8px 15px rgba(0,0,0,0.1); white-space: nowrap; }
     .btn-black:hover { transform: translateY(-2px); box-shadow: 0 12px 20px rgba(0,0,0,0.15); }
 
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
-    .stat-card { background: var(--card-bg); border-radius: var(--radius-xl); padding: 24px; box-shadow: var(--shadow-soft); display: flex; flex-direction: column; gap: 16px; transition: all 0.3s; border: 1.5px solid var(--border-light); }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+    .stat-card { background: var(--card-bg); border-radius: var(--radius-xl); padding: 20px; box-shadow: var(--shadow-soft); display: flex; flex-direction: column; gap: 14px; transition: all 0.3s; border: 1.5px solid var(--border-light); }
     .stat-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); border-color: var(--primary); }
     
     .stat-card.purple-bg { background: var(--primary-gradient); color: #fff; border: none; }
@@ -145,24 +166,24 @@
     .stat-card.purple-bg .num { color: #fff; }
     
     .stat-header { display: flex; justify-content: space-between; align-items: center; }
-    .stat-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; background: #f5f5fc; color: var(--primary); }
+    .stat-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; background: #f5f5fc; color: var(--primary); }
     .stat-card.purple-bg .stat-icon { background: rgba(255,255,255,0.2); color: #fff; }
     
-    .stat-info .num { font-size: 32px; font-weight: 600; color: var(--text-main); line-height: 1.2; letter-spacing: -1px; }
-    .stat-info .label { font-size: 14px; color: var(--text-sub); font-weight: 500; }
+    .stat-info .num { font-size: 28px; font-weight: 600; color: var(--text-main); line-height: 1.2; letter-spacing: -1px; }
+    .stat-info .label { font-size: 13px; color: var(--text-sub); font-weight: 500; }
 
-    .panel { background: var(--card-bg); border-radius: var(--radius-xl); padding: 30px; box-shadow: var(--shadow-soft); border: 1.5px solid var(--border-light); }
-    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .panel { background: var(--card-bg); border-radius: var(--radius-xl); padding: 24px; box-shadow: var(--shadow-soft); border: 1.5px solid var(--border-light); }
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .panel-title { font-size: 18px; font-weight: 600; color: var(--text-main); }
 
-    .table-wrapper { width: 100%; overflow-x: auto; }
-    table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
-    th { color: var(--text-sub); font-weight: 500; padding: 16px 20px; font-size: 13px; border-bottom: 1.5px solid var(--border-light); }
-    td { padding: 18px 20px; border-bottom: 1.5px solid var(--border-light); vertical-align: middle; font-size: 14px; }
+    .table-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; min-width: 600px; }
+    th { color: var(--text-sub); font-weight: 500; padding: 14px 16px; font-size: 13px; border-bottom: 1.5px solid var(--border-light); white-space: nowrap; }
+    td { padding: 14px 16px; border-bottom: 1.5px solid var(--border-light); vertical-align: middle; font-size: 13.5px; }
     tr:last-child td { border-bottom: none; }
 
-    .img-thumb { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; background: #f9fafb; border: 1.5px solid var(--border-light); cursor: pointer; }
-    .pill { padding: 6px 14px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; }
+    .img-thumb { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; background: #f9fafb; border: 1.5px solid var(--border-light); cursor: pointer; }
+    .pill { padding: 5px 12px; border-radius: var(--radius-pill); font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; white-space: nowrap; }
     .pill-green { background: #ecfdf5; color: #059669; border-color: #a7f3d0; }
     .pill-blue { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
     .pill-gray { background: #f8fafc; color: #4b5563; border-color: #e2e8f0; }
@@ -170,11 +191,11 @@
     .pill-yellow { background: #fefce8; color: #ca8a04; border-color: #fef08a; }
 
     .btn-action-group { display: flex; gap: 8px; }
-    .btn-sm { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border-light); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; font-size: 13px; }
+    .btn-sm { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border-light); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; font-size: 13px; flex-shrink: 0; }
     .btn-edit { background: #fff; color: #4b5563; } .btn-edit:hover { background: #f3f4f6; color: #111827; border-color: #d1d5db; }
     .btn-danger { background: #fff; color: #dc2626; } .btn-danger:hover { background: #fef2f2; border-color: #fca5a5; }
 
-    .tab-page { display: none; flex-direction: column; gap: 24px; width: 100%; }
+    .tab-page { display: none; flex-direction: column; gap: 20px; width: 100%; }
     .tab-page.active { display: flex; }
 
     .tab-page.active > .page-header-row { animation: slideUpFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; opacity: 0; }
@@ -185,48 +206,139 @@
     .tab-page.fade-out { animation: fadeOutDown 0.2s ease forwards !important; }
     .tab-page.fade-out > * { animation: none !important; }
 
-    .form-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17, 24, 39, 0.4); backdrop-filter: blur(4px); z-index: 999; justify-content: center; align-items: center; padding: 20px; }
-    .form-modal-card { background: #ffffff; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; border-radius: var(--radius-xl); padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 20px; border: 1.5px solid var(--border-light); }
-    .form-modal-title { font-size: 20px; font-weight: 600; color: var(--text-main); }
-    .form-group { display: flex; flex-direction: column; gap: 8px; }
-    .form-group label { font-size: 13px; font-weight: 600; color: var(--text-sub); }
-    .form-control { padding: 12px 16px; border-radius: 12px; border: 1.5px solid var(--border-light); outline: none; background: #fff; font-size: 14px; transition: 0.3s; }
+    .form-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17, 24, 39, 0.4); backdrop-filter: blur(4px); z-index: 9999; justify-content: center; align-items: center; padding: 16px; }
+    .form-modal-card { background: #ffffff; width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto; border-radius: var(--radius-xl); padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 16px; border: 1.5px solid var(--border-light); }
+    .form-modal-title { font-size: 18px; font-weight: 600; color: var(--text-main); }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 12.5px; font-weight: 600; color: var(--text-sub); }
+    .form-control { padding: 11px 14px; border-radius: 12px; border: 1.5px solid var(--border-light); outline: none; background: #fff; font-size: 13.5px; transition: 0.3s; }
     .form-control:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(138, 135, 232, 0.15); }
     .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
-    .btn-cancel { background: #f3f4f6; color: var(--text-sub); border: 1px solid var(--border-light); padding: 10px 20px; border-radius: var(--radius-pill); font-weight: 600; cursor: pointer; transition: 0.2s;}
+    .btn-cancel { background: #f3f4f6; color: var(--text-sub); border: 1px solid var(--border-light); padding: 10px 18px; border-radius: var(--radius-pill); font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 13.5px; }
     .btn-cancel:hover { background: #e5e7eb; }
     
-    .image-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 1000; justify-content: center; align-items: center; }
-    .image-modal img { max-width: 90%; max-height: 80vh; border-radius: 20px; border: 2px solid var(--border-light); }
-    .image-modal-close { position: absolute; top: 30px; right: 40px; color: #fff; font-size: 40px; cursor: pointer; }
+    .image-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(5px); z-index: 10000; justify-content: center; align-items: center; padding: 16px; }
+    .image-modal img { max-width: 95%; max-height: 80vh; border-radius: 16px; border: 2px solid var(--border-light); }
+    .image-modal-close { position: absolute; top: 20px; right: 24px; color: #fff; font-size: 36px; cursor: pointer; }
 
-    .order-item-mini { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-    .order-item-mini img { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border-light); }
-    .order-item-mini-title { font-size: 12.5px; font-weight: 500; max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .order-item-mini { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .order-item-mini img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; border: 1px solid var(--border-light); }
+    .order-item-mini-title { font-size: 12px; font-weight: 500; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Responsive Styles */
+    @media (max-width: 992px) {
+      body { flex-direction: column; }
+      aside {
+        position: fixed;
+        top: 0; left: -280px; bottom: 0;
+        width: 260px; height: 100%;
+        background: #ffffff;
+        z-index: 999;
+        padding: 24px 16px;
+        transition: left 0.3s ease;
+        box-shadow: 10px 0 30px rgba(0,0,0,0.1);
+        border-radius: 0 24px 24px 0;
+      }
+      aside.show { left: 0; }
+      
+      .main-content {
+        margin-left: 0;
+        border-radius: 0;
+        min-height: 100vh;
+        width: 100%;
+      }
+      
+      header {
+        padding: 16px 20px 10px;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      
+      .mobile-toggle { display: flex; }
+      
+      .search-box {
+        order: 3;
+        width: 100%;
+        margin-top: 4px;
+      }
+      .search-box:focus-within { width: 100%; }
+      
+      .admin-profile { margin-left: auto; }
+      
+      .container {
+        padding: 16px 16px 40px;
+        gap: 16px;
+      }
+      
+      .greeting-title { font-size: 22px; }
+      .page-header-row { flex-wrap: wrap; gap: 12px; }
+      
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      .stat-card {
+        padding: 16px;
+        border-radius: var(--radius-lg);
+        gap: 10px;
+      }
+      .stat-icon {
+        width: 36px; height: 36px;
+        font-size: 16px;
+      }
+      .stat-info .num { font-size: 22px; }
+      .stat-info .label { font-size: 12px; }
+      
+      .panel {
+        padding: 16px;
+        border-radius: var(--radius-lg);
+      }
+      
+      .login-card {
+        padding: 36px 20px;
+        max-width: 380px;
+      }
+      .form-modal-card {
+        padding: 20px;
+        border-radius: var(--radius-lg);
+      }
+    }
+
+    @media (max-width: 520px) {
+      .stats-grid { grid-template-columns: 1fr; }
+      .profile-text, #displayAdminEmail, .profile-info i.fa-chevron-down { display: none; }
+      .profile-info { padding: 4px; }
+      .action-icons { display: none; }
+    }
   </style>
 </head>
 <body>
 
+  <!-- Login Page -->
   <div id="loginContainer">
     <div class="login-card">
-      <div class="login-logo"><i class="fa-solid fa-shapes"></i></div>
+      <img src="assets/images/logo.png" class="login-logo-img" alt="Logo">
       <div>
         <div class="login-title">MarketAdmin</div>
         <div class="login-sub">ลงชื่อเข้าใช้ระบบจัดการ</div>
       </div>
       
-      <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 10px;">
-        <input type="email" id="loginEmail" class="login-input" placeholder="Email address">
+      <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 10px;">
+        <input type="email" id="loginEmail" class="login-input" placeholder="Email address" autocapitalize="off" autocorrect="off">
         <input type="password" id="loginPassword" class="login-input" placeholder="Password" onkeyup="if(event.key === 'Enter') handleAdminLogin()">
         <button class="login-btn" onclick="handleAdminLogin()">Log in</button>
       </div>
     </div>
   </div>
 
+  <!-- Main App -->
   <div id="appContainer">
+    
+    <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+
     <aside>
       <div class="brand">
-        <div class="brand-logo"><i class="fa-solid fa-shapes"></i></div>
+        <img src="assets/images/logo.png" style="width: 38px; height: 38px; object-fit: contain; border-radius: 8px;" alt="Logo">
         <div class="brand-title">PopLand</div>
       </div>
       <ul class="menu-list">
@@ -255,6 +367,8 @@
 
     <div class="main-content">
       <header>
+        <button class="icon-btn mobile-toggle" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+
         <div class="search-box">
           <i class="fa-solid fa-magnifying-glass" style="color: #9ca3af;"></i>
           <input type="text" id="searchInput" placeholder="Search..." onkeyup="filterTables()">
@@ -279,6 +393,7 @@
 
       <div class="container">
         
+        <!-- TAB 1: OVERVIEW -->
         <div id="tab-overview" class="tab-page active">
           <div class="page-header-row">
             <h1 class="greeting-title" id="greetingName">Good morning, Admin</h1>
@@ -349,6 +464,7 @@
           </div>
         </div>
 
+        <!-- TAB 2: PRODUCTS -->
         <div id="tab-products" class="tab-page">
           <div class="page-header-row">
             <h1 class="greeting-title">Products Management</h1>
@@ -361,7 +477,8 @@
                     <th>Image</th>
                     <th>Product Name</th>
                     <th>Price</th>
-                    <th>Stock</th> <th>Category</th>
+                    <th>Stock</th>
+                    <th>Category</th>
                     <th>Store</th>
                     <th>Actions</th>
                   </tr>
@@ -374,6 +491,7 @@
           </div>
         </div>
 
+        <!-- TAB 3: ORDERS -->
         <div id="tab-orders" class="tab-page">
           <div class="page-header-row">
             <h1 class="greeting-title">Orders History</h1>
@@ -401,6 +519,7 @@
           </div>
         </div>
 
+        <!-- TAB 4: USERS -->
         <div id="tab-users" class="tab-page">
           <div class="page-header-row">
             <h1 class="greeting-title">Users Directory</h1>
@@ -433,6 +552,7 @@
     </div>
   </div>
 
+  <!-- Modals -->
   <div id="imageModal" class="image-modal" onclick="closeImageModal()">
     <span class="image-modal-close" onclick="closeImageModal()">&times;</span>
     <img id="modalImg" src="" onclick="event.stopPropagation()">
@@ -443,7 +563,7 @@
       <div class="form-modal-title" id="userModalTitle">User Info</div>
       <input type="hidden" id="userIdInput">
       <div class="form-group"><label>Full Name</label><input type="text" id="userNameInput" class="form-control" placeholder="John Doe"></div>
-      <div class="form-group"><label>Email Address</label><input type="email" id="userEmailInput" class="form-control" placeholder="john@example.com"></div>
+      <div class="form-group"><label>Email Address</label><input type="email" id="userEmailInput" class="form-control" placeholder="john@example.com" autocapitalize="off"></div>
       <div class="form-group" id="passwordGroup"><label>Password</label><input type="password" id="userPasswordInput" class="form-control" placeholder="At least 6 characters"></div>
       <div class="form-group"><label>Phone Number</label><input type="tel" id="userPhoneInput" class="form-control" placeholder="08X-XXX-XXXX"></div>
       <div class="form-group"><label>Address</label><input type="text" id="userAddressInput" class="form-control" placeholder="Home address..."></div>
@@ -481,10 +601,20 @@
     </div>
   </div>
 
+  <!-- FIREBASE INTEGRATION -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    
+    import { 
+      getAuth, 
+      setPersistence, 
+      browserLocalPersistence, 
+      signInWithEmailAndPassword, 
+      createUserWithEmailAndPassword, 
+      onAuthStateChanged, 
+      signOut 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBrRAM50cZxBF-Ipe8r_Lp17-P_pOCow6s",
@@ -505,45 +635,72 @@
     let ordersData = [];
     let isDashboardInitialized = false;
 
+    let unsubUsers = null, unsubProducts = null, unsubOrders = null;
+
+    function stopListeners() {
+      if (unsubUsers) { unsubUsers(); unsubUsers = null; }
+      if (unsubProducts) { unsubProducts(); unsubProducts = null; }
+      if (unsubOrders) { unsubOrders(); unsubOrders = null; }
+    }
+
+    function getValidImageUrl(url) {
+      if (!url || typeof url !== 'string' || url.startsWith('file://')) {
+        return 'https://via.placeholder.com/150';
+      }
+      return url;
+    }
+
     onAuthStateChanged(auth, async (user) => {
       const loginUI = document.getElementById('loginContainer');
       const appUI = document.getElementById('appContainer');
 
       if (user) {
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        const isAdmin = (userDoc.exists() && (userDoc.data().role === 'admin' || userDoc.data().isAdmin === true)) || user.email === 'admin@community.com';
+        try {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          const isAdmin = (userDoc.exists() && (userDoc.data().role === 'admin' || userDoc.data().isAdmin === true)) || user.email === 'admin@community.com';
 
-        if (isAdmin) {
-          const userData = userDoc.exists() ? userDoc.data() : {};
-          const adminName = userData.fullName || userData.displayName || 'Admin';
-          const avatarUrl = userData.profileImage || userData.avatarUrl || null;
-          
-          document.getElementById('displayAdminEmail').innerText = user.email;
-          document.getElementById('displayAdminName').innerText = adminName;
-          
-          document.getElementById('greetingName').innerText = `Good morning, ${adminName.split(' ')[0]}`;
+          if (isAdmin) {
+            const userData = userDoc.exists() ? userDoc.data() : {};
+            const adminName = userData.fullName || userData.displayName || 'Admin';
+            const avatarUrl = getValidImageUrl(userData.profileImage || userData.avatarUrl);
+            
+            document.getElementById('displayAdminEmail').innerText = user.email;
+            document.getElementById('displayAdminName').innerText = adminName;
+            document.getElementById('greetingName').innerText = `Good morning, ${adminName.split(' ')[0]}`;
 
-          const avatarContainer = document.getElementById('displayAdminAvatar');
-          if (avatarUrl) {
-            avatarContainer.innerHTML = `<img src="${avatarUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+            const avatarContainer = document.getElementById('displayAdminAvatar');
+            if (avatarUrl && !avatarUrl.includes('placeholder')) {
+              avatarContainer.innerHTML = `<img src="${avatarUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+            } else {
+              avatarContainer.innerHTML = `<i class="fa-solid fa-user-shield"></i>`;
+            }
+
+            loginUI.style.display = 'none';
+            appUI.style.display = 'flex';
+            
+            await updateDoc(doc(db, "users", user.uid), { isOnline: true, lastSeen: serverTimestamp() }).catch(async () => {
+              await setDoc(doc(db, "users", user.uid), { email: user.email, role: 'admin', isAdmin: true, isOnline: true, lastSeen: serverTimestamp() }, { merge: true });
+            });
+
+            if (!isDashboardInitialized) { initDashboard(); isDashboardInitialized = true; }
           } else {
-            avatarContainer.innerHTML = `<i class="fa-solid fa-user-shield"></i>`;
+            stopListeners();
+            await signOut(auth);
+            Swal.fire({ 
+              icon: 'error', 
+              title: 'เข้าสู่ระบบไม่สำเร็จ', 
+              text: 'ไม่ใช่adminจะมากรอกเล่นทำไม', 
+              confirmButtonColor: '#0f172a' 
+            });
           }
-
-          loginUI.style.display = 'none';
-          appUI.style.display = 'flex';
-          
-          await updateDoc(doc(db, "users", user.uid), { isOnline: true, lastSeen: serverTimestamp() }).catch(async () => {
-            await setDoc(doc(db, "users", user.uid), { email: user.email, role: 'admin', isAdmin: true, isOnline: true, lastSeen: serverTimestamp() }, { merge: true });
-          });
-
-          if (!isDashboardInitialized) { initDashboard(); isDashboardInitialized = true; }
-        } else {
-          await signOut(auth);
-          Swal.fire({ icon: 'error', title: 'Access Denied', text: 'You are not an administrator.', confirmButtonColor: '#0f172a' });
+        } catch (err) {
+          console.error("Auth verify error:", err);
         }
       } else {
-        loginUI.style.display = 'flex'; appUI.style.display = 'none'; isDashboardInitialized = false;
+        stopListeners();
+        loginUI.style.display = 'flex'; 
+        appUI.style.display = 'none'; 
+        isDashboardInitialized = false;
       }
     });
 
@@ -552,32 +709,65 @@
       if (user) updateDoc(doc(db, "users", user.uid), { isOnline: false, lastSeen: serverTimestamp() });
     });
 
-    window.handleAdminLogin = async () => {
-      const email = document.getElementById('loginEmail').value.trim();
-      const pass = document.getElementById('loginPassword').value;
-      if(!email || !pass) return Swal.fire({ icon: 'warning', title: 'Required', text: 'Please enter email and password.' });
+   window.handleAdminLogin = async () => {
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const pass = document.getElementById('loginPassword').value;
+  const swalTarget = document.getElementById('loginContainer');
 
-      try {
-        Swal.fire({ title: 'Logging in...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-        await signInWithEmailAndPassword(auth, email, pass);
-        Swal.close();
-      } catch (error) { Swal.fire({ icon: 'error', title: 'Login Failed', text: 'Invalid credentials.', confirmButtonColor: '#0f172a' }); }
-    };
+  // ฟังก์ชันช่วยเรียก Alert ปลอดภัย
+  const popupAlert = (icon, title, text) => {
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        target: swalTarget,
+        icon: icon,
+        title: title,
+        text: text,
+        confirmButtonColor: '#0f172a'
+      });
+    } else {
+      alert(`${title}: ${text}`);
+    }
+  };
+
+  if (!email || !pass) {
+    return popupAlert('warning', 'กรุณากรอกข้อมูล', 'กรุณากรอกอีเมลและรหัสผ่าน');
+  }
+
+  try {
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        target: swalTarget,
+        title: 'Logging in...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+    }
+    
+    await setPersistence(auth, browserLocalPersistence);
+    await signInWithEmailAndPassword(auth, email, pass);
+    if (typeof Swal !== 'undefined') Swal.close();
+  } catch (error) { 
+    console.error("Login Error:", error);
+    popupAlert('error', 'อุ้ยเข้าไม่ได้', 'ว่าแต่ไม่ใช่adminจะมากรอกเล่นทำไม😛😛');
+  }
+};
 
     window.handleLogout = async () => {
       Swal.fire({ title: 'Log out?', icon: 'question', showCancelButton: true, confirmButtonColor: '#0f172a' }).then(async (res) => { 
         if (res.isConfirmed) {
           const user = auth.currentUser;
           if (user) await updateDoc(doc(db, "users", user.uid), { isOnline: false, lastSeen: serverTimestamp() });
+          stopListeners();
           await signOut(auth); 
         } 
       });
     };
 
     function initDashboard() {
-      onSnapshot(collection(db, "users"), (snapshot) => { usersData = []; snapshot.forEach(d => usersData.push({ id: d.id, ...d.data() })); updateDashboard(); });
-      onSnapshot(collection(db, "products"), (snapshot) => { productsData = []; snapshot.forEach(d => productsData.push({ id: d.id, ...d.data() })); updateDashboard(); });
-      onSnapshot(collection(db, "orders"), (snapshot) => { ordersData = []; snapshot.forEach(d => ordersData.push({ id: d.id, ...d.data() })); updateDashboard(); });
+      stopListeners();
+      unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => { usersData = []; snapshot.forEach(d => usersData.push({ id: d.id, ...d.data() })); updateDashboard(); }, (err) => console.log("Users error:", err));
+      unsubProducts = onSnapshot(collection(db, "products"), (snapshot) => { productsData = []; snapshot.forEach(d => productsData.push({ id: d.id, ...d.data() })); updateDashboard(); }, (err) => console.log("Products error:", err));
+      unsubOrders = onSnapshot(collection(db, "orders"), (snapshot) => { ordersData = []; snapshot.forEach(d => ordersData.push({ id: d.id, ...d.data() })); updateDashboard(); }, (err) => console.log("Orders error:", err));
     }
 
     function formatLastSeen(val) {
@@ -641,7 +831,7 @@
         }
 
         const name = u.fullName || u.displayName || 'Unknown User';
-        const avatar = u.profileImage || u.avatarUrl || 'https://via.placeholder.com/150';
+        const avatar = getValidImageUrl(u.profileImage || u.avatarUrl);
         const isOnline = u.isOnline === true || u.status === 'online';
         
         userRows += `<tr>
@@ -660,19 +850,17 @@
       });
       document.getElementById('allUsersTable').innerHTML = userRows || `<tr><td colspan="6" style="text-align:center;">No users</td></tr>`;
 
-      // 🟢 อัปเดตการแสดงผลตารางสินค้า
       let productRows = '';
       productsData.forEach((p) => {
         const seller = usersData.find(u => u.id === (p.sellerId || p.userId));
-        
-        // คำนวณสต็อกสินค้า (เช็กทั้ง stock และ quantity)
+        const pImg = getValidImageUrl(p.image);
         const currentStock = p.stock !== undefined ? Number(p.stock) : (p.quantity !== undefined ? Number(p.quantity) : 0);
         const stockBadge = currentStock > 0 
           ? `<span class="pill pill-green">${currentStock.toLocaleString()} ชิ้น</span>`
           : `<span class="pill pill-red">Out of stock</span>`;
 
         productRows += `<tr>
-          <td><img src="${p.image || 'https://via.placeholder.com/150'}" class="img-thumb" onclick="openImageModal('${p.image}')"></td>
+          <td><img src="${pImg}" class="img-thumb" onclick="openImageModal('${pImg}')"></td>
           <td style="font-weight: 500;">${p.title || p.name || 'Item'}</td>
           <td style="font-weight: 600;">฿${(p.price || 0).toLocaleString()}</td>
           <td>${stockBadge}</td>
@@ -697,7 +885,8 @@
         
         let itemsHtml = `<div>`;
         (o.items || o.products || []).slice(0, 2).forEach(item => {
-          itemsHtml += `<div class="order-item-mini"><img src="${item.image || 'https://via.placeholder.com/150'}"><div class="order-item-mini-title">${item.title || item.name} (x${item.quantity||1})</div></div>`;
+          const itemImg = getValidImageUrl(item.image);
+          itemsHtml += `<div class="order-item-mini"><img src="${itemImg}"><div class="order-item-mini-title">${item.title || item.name} (x${item.quantity||1})</div></div>`;
         });
         if((o.items || o.products || []).length > 2) itemsHtml += `<div style="font-size:11px; color:var(--text-sub);">+ more items...</div>`;
         itemsHtml += `</div>`;
@@ -746,10 +935,9 @@
     };
     
     window.closeUserModal = () => document.getElementById('userModal').style.display = "none";
-    window.saveUser = async () => { const id = document.getElementById('userIdInput').value; const name = document.getElementById('userNameInput').value.trim(); const email = document.getElementById('userEmailInput').value.trim(); const password = document.getElementById('userPasswordInput').value; const phone = document.getElementById('userPhoneInput').value.trim(); const address = document.getElementById('userAddressInput').value.trim(); const role = document.getElementById('userRoleSelect').value; const avatar = document.getElementById('userAvatarInput').value; if (!name || !email) return Swal.fire({ icon: 'warning', title: 'Required', text: 'Name and email are required.' }); Swal.fire({ title: 'Saving...', didOpen: () => Swal.showLoading() }); try { if (id) { await updateDoc(doc(db, "users", id), { fullName: name, displayName: name, email, phone, address, role, isSeller: role === 'seller', isAdmin: role === 'admin', profileImage: avatar, avatarUrl: avatar }); } else { const cred = await createUserWithEmailAndPassword(auth, email, password); await setDoc(doc(db, "users", cred.user.uid), { fullName: name, displayName: name, email, phone, address, role, isSeller: role === 'seller', isAdmin: role === 'admin', profileImage: avatar, avatarUrl: avatar, createdAt: new Date() }); } closeUserModal(); Swal.fire({ icon: 'success', title: 'Saved', timer: 1000, showConfirmButton: false }); } catch (e) { Swal.fire({ icon: 'error', title: 'Error', text: e.message }); } };
+    window.saveUser = async () => { const id = document.getElementById('userIdInput').value; const name = document.getElementById('userNameInput').value.trim(); const email = document.getElementById('userEmailInput').value.trim().toLowerCase(); const password = document.getElementById('userPasswordInput').value; const phone = document.getElementById('userPhoneInput').value.trim(); const address = document.getElementById('userAddressInput').value.trim(); const role = document.getElementById('userRoleSelect').value; const avatar = document.getElementById('userAvatarInput').value; if (!name || !email) return Swal.fire({ icon: 'warning', title: 'Required', text: 'Name and email are required.' }); Swal.fire({ title: 'Saving...', didOpen: () => Swal.showLoading() }); try { if (id) { await updateDoc(doc(db, "users", id), { fullName: name, displayName: name, email, phone, address, role, isSeller: role === 'seller', isAdmin: role === 'admin', profileImage: avatar, avatarUrl: avatar }); } else { const cred = await createUserWithEmailAndPassword(auth, email, password); await setDoc(doc(db, "users", cred.user.uid), { fullName: name, displayName: name, email, phone, address, role, isSeller: role === 'seller', isAdmin: role === 'admin', profileImage: avatar, avatarUrl: avatar, createdAt: new Date() }); } closeUserModal(); Swal.fire({ icon: 'success', title: 'Saved', timer: 1000, showConfirmButton: false }); } catch (e) { Swal.fire({ icon: 'error', title: 'Error', text: e.message }); } };
     window.deleteUser = async (id) => { Swal.fire({ title: 'Delete user?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f172a' }).then(async (res) => { if(res.isConfirmed) await deleteDoc(doc(db, "users", id)); }); };
     
-    // 🟢 เปิด Modal แก้ไขสินค้าพร้อมดึงค่า Stock
     window.openEditProductModal = (id) => { 
       const p = productsData.find(item => item.id === id); 
       if(!p) return; 
@@ -763,7 +951,6 @@
 
     window.closeProductModal = () => document.getElementById('productModal').style.display = "none";
     
-    // 🟢 บันทึกการแก้ไขสินค้า (ชื่อ, ราคา, จำนวนสต็อก, หมวดหมู่)
     window.saveProduct = async () => { 
       const id = document.getElementById('productIdInput').value; 
       const title = document.getElementById('productTitleInput').value.trim(); 
@@ -791,7 +978,7 @@
     };
 
     window.deleteProduct = async (id) => { Swal.fire({ title: 'Delete product?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f172a' }).then(async (res) => { if(res.isConfirmed) await deleteDoc(doc(db, "products", id)); }); };
-    window.openOrderDetailModal = (id) => { const o = ordersData.find(item => item.id === id); if(!o) return; document.getElementById('orderIdDetailInput').value = o.id; document.getElementById('orderStatusSelect').value = o.status || 'pending'; document.getElementById('orderTotalPriceText').innerText = `฿${(o.totalPrice || o.total || 0).toLocaleString()}`; const slip = o.slipUrl || o.slip || o.paymentSlip; document.getElementById('orderSlipContainer').innerHTML = slip ? `<img src="${slip}" style="width:100px; border-radius:10px; cursor:pointer;" onclick="openImageModal('${slip}')">` : '-'; document.getElementById('orderDetailModal').style.display = "flex"; };
+    window.openOrderDetailModal = (id) => { const o = ordersData.find(item => item.id === id); if(!o) return; document.getElementById('orderIdDetailInput').value = o.id; document.getElementById('orderStatusSelect').value = o.status || 'pending'; document.getElementById('orderTotalPriceText').innerText = `฿${(o.totalPrice || o.total || 0).toLocaleString()}`; const slip = getValidImageUrl(o.slipUrl || o.slip || o.paymentSlip); document.getElementById('orderSlipContainer').innerHTML = slip && !slip.includes('placeholder') ? `<img src="${slip}" style="width:100px; border-radius:10px; cursor:pointer;" onclick="openImageModal('${slip}')">` : '-'; document.getElementById('orderDetailModal').style.display = "flex"; };
     window.closeOrderDetailModal = () => document.getElementById('orderDetailModal').style.display = "none";
     window.saveOrderStatus = async () => { const id = document.getElementById('orderIdDetailInput').value; const status = document.getElementById('orderStatusSelect').value; try { await updateDoc(doc(db, "orders", id), { status }); closeOrderDetailModal(); } catch (e) {} };
     window.deleteOrder = async (id) => { Swal.fire({ title: 'Delete order?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#0f172a' }).then(async (res) => { if(res.isConfirmed) await deleteDoc(doc(db, "orders", id)); }); };
@@ -800,7 +987,23 @@
   </script>
 
   <script>
+    function toggleSidebar() {
+      const aside = document.querySelector('aside');
+      const overlay = document.getElementById('sidebarOverlay');
+      aside.classList.toggle('show');
+      overlay.classList.toggle('show');
+    }
+
+    function closeSidebar() {
+      const aside = document.querySelector('aside');
+      const overlay = document.getElementById('sidebarOverlay');
+      if (aside) aside.classList.remove('show');
+      if (overlay) overlay.classList.remove('show');
+    }
+
     function changeTab(tabName, btn) {
+      closeSidebar();
+      
       const currentActive = document.querySelector('.tab-page.active');
       const targetPage = document.getElementById(`tab-${tabName}`);
 
